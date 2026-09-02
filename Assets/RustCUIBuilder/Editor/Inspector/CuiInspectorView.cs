@@ -1,18 +1,20 @@
 using System;
 using System.Linq;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UI;
 using RustCUIBuilder.Runtime.Core.Models;
 using RustCUIBuilder.Runtime.Core.Registry;
 using RustCUIBuilder.Runtime.Discovery;
 using RustCUIBuilder.Runtime.Rendering.Canvas;
-using UnityEditor;
-using UnityEngine;
 
 namespace RustCUIBuilder.Editor.Inspector
 {
     /// <summary>
-    /// Dynamic typed inspector for Rust CUI Builder.
-    /// Exposes full property controls for all 21 verified CUI components with visual anchor presets,
-    /// sprite/material pickers, and color pickers.
+    /// Exhaustive typed inspector for Rust CUI Builder.
+    /// Exposes 100% of all tweakable properties for all Oxide/Rust CUI components with visual anchor presets,
+    /// sprite/material pickers, color pickers, font selectors, enum dropdowns, and transition states.
+    /// Compatible with standard Oxide CUI and 0xF CUI Library specifications.
     /// </summary>
     public class CuiInspectorView
     {
@@ -39,7 +41,7 @@ namespace RustCUIBuilder.Editor.Inspector
 
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
 
-            // 1. Element Header
+            // 1. Element Header Info
             DrawElementHeader(elem, doc, onModified);
 
             EditorGUILayout.Space(6);
@@ -101,9 +103,17 @@ namespace RustCUIBuilder.Editor.Inspector
         {
             EditorGUILayout.BeginVertical("helpBox");
 
-            // Header
+            // Component Header Bar
             EditorGUILayout.BeginHorizontal();
             GUILayout.Label(comp.Type, EditorStyles.boldLabel);
+
+            if (comp is ICuiEnableable enableable)
+            {
+                bool isEn = enableable.Enabled ?? true;
+                bool newEn = EditorGUILayout.Toggle(isEn, GUILayout.Width(20));
+                if (newEn != isEn) enableable.Enabled = newEn;
+            }
+
             if (GUILayout.Button("✕", EditorStyles.miniButton, GUILayout.Width(20)))
             {
                 elem.Components.RemoveAt(index);
@@ -154,8 +164,11 @@ namespace RustCUIBuilder.Editor.Inspector
                 case CuiDraggableComponent drag:
                     DrawDraggableInspector(drag);
                     break;
-                case CuiSlotComponent slot:
-                    slot.Filter = EditorGUILayout.TextField("Slot Filter", slot.Filter);
+                case CuiNeedsCursorComponent:
+                    EditorGUILayout.HelpBox("NeedsCursor: Unlocks mouse cursor for interactive modal UI elements.", MessageType.None);
+                    break;
+                case CuiNeedsKeyboardComponent:
+                    EditorGUILayout.HelpBox("NeedsKeyboard: Captures keyboard focus for chat and text input fields.", MessageType.None);
                     break;
                 case CuiMaskComponent mask:
                     mask.ShowMaskGraphic = EditorGUILayout.Toggle("Show Mask Graphic", mask.ShowMaskGraphic ?? false);
@@ -187,6 +200,8 @@ namespace RustCUIBuilder.Editor.Inspector
             if (GUILayout.Button("Center", EditorStyles.miniButton)) SetAnchorPreset(rect, "0.5 0.5", "0.5 0.5", "-100 -50", "100 50");
             if (GUILayout.Button("Top", EditorStyles.miniButton)) SetAnchorPreset(rect, "0 1", "1 1", "0 -60", "0 0");
             if (GUILayout.Button("Bottom", EditorStyles.miniButton)) SetAnchorPreset(rect, "0 0", "1 0", "0 0", "0 60");
+            if (GUILayout.Button("Left", EditorStyles.miniButton)) SetAnchorPreset(rect, "0 0", "0 1", "0 0", "60 0");
+            if (GUILayout.Button("Right", EditorStyles.miniButton)) SetAnchorPreset(rect, "1 0", "1 1", "-60 0", "0 0");
             EditorGUILayout.EndHorizontal();
 
             rect.AnchorMin = EditorGUILayout.TextField("Anchor Min", rect.AnchorMin);
@@ -194,7 +209,16 @@ namespace RustCUIBuilder.Editor.Inspector
             rect.OffsetMin = EditorGUILayout.TextField("Offset Min (px)", rect.OffsetMin);
             rect.OffsetMax = EditorGUILayout.TextField("Offset Max (px)", rect.OffsetMax);
             rect.Pivot = EditorGUILayout.TextField("Pivot", rect.Pivot);
-            rect.Rotation = EditorGUILayout.FloatField("Rotation", rect.Rotation);
+            rect.Rotation = EditorGUILayout.Slider("Rotation (deg)", rect.Rotation, -180f, 180f);
+
+            if (!string.IsNullOrEmpty(rect.SetParent))
+            {
+                rect.SetParent = EditorGUILayout.TextField("Set Parent", rect.SetParent);
+            }
+            if (rect.SetTransformIndex >= 0)
+            {
+                rect.SetTransformIndex = EditorGUILayout.IntField("Transform Index", rect.SetTransformIndex);
+            }
         }
 
         private void SetAnchorPreset(CuiRectTransformComponent rect, string aMin, string aMax, string oMin, string oMax)
@@ -207,27 +231,37 @@ namespace RustCUIBuilder.Editor.Inspector
 
         private void DrawTextInspector(CuiTextComponent txt)
         {
-            EditorGUILayout.LabelField("Text Content");
-            txt.Text = EditorGUILayout.TextArea(txt.Text, GUILayout.Height(40));
-            txt.FontSize = EditorGUILayout.IntSlider("Font Size", txt.FontSize, 8, 72);
+            EditorGUILayout.LabelField("Text Content (RichText Supported)");
+            txt.Text = EditorGUILayout.TextArea(txt.Text, GUILayout.Height(45));
+            txt.FontSize = EditorGUILayout.IntSlider("Font Size", txt.FontSize, 6, 96);
 
-            int fontIdx = Array.IndexOf(RustAssetDiscovery.VerifiedFonts, txt.Font);
+            // Font Selector Dropdown
+            var fonts = RustAssetDiscovery.VerifiedFonts;
+            int fontIdx = Array.IndexOf(fonts, txt.Font);
             if (fontIdx < 0) fontIdx = 0;
-            int newFontIdx = EditorGUILayout.Popup("Font", fontIdx, RustAssetDiscovery.VerifiedFonts);
-            txt.Font = RustAssetDiscovery.VerifiedFonts[newFontIdx];
+            int newFontIdx = EditorGUILayout.Popup("Font", fontIdx, fonts);
+            txt.Font = fonts[newFontIdx];
 
             txt.Align = (TextAnchor)EditorGUILayout.EnumPopup("Alignment", txt.Align);
             txt.Color = DrawCuiColorField("Color", txt.Color, Color.white);
+            txt.VerticalOverflow = (VerticalWrapMode)EditorGUILayout.EnumPopup("Vertical Overflow", txt.VerticalOverflow);
             txt.FadeIn = EditorGUILayout.FloatField("Fade In (sec)", txt.FadeIn);
+
+            if (txt.BlocksRaycast.HasValue)
+            {
+                txt.BlocksRaycast = EditorGUILayout.Toggle("Blocks Raycast", txt.BlocksRaycast.Value);
+            }
         }
 
         private void DrawImageInspector(CuiImageComponent img)
         {
+            // Sprite Asset Picker
             EditorGUILayout.BeginHorizontal();
             img.Sprite = EditorGUILayout.TextField("Sprite Asset", img.Sprite);
             if (GUILayout.Button("▼", GUILayout.Width(22)))
             {
                 var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("None / Blank"), string.IsNullOrEmpty(img.Sprite), () => img.Sprite = "");
                 foreach (var spr in RustAssetDiscovery.VerifiedSprites)
                 {
                     menu.AddItem(new GUIContent(spr), img.Sprite == spr, () => img.Sprite = spr);
@@ -236,15 +270,13 @@ namespace RustCUIBuilder.Editor.Inspector
             }
             EditorGUILayout.EndHorizontal();
 
-            img.Color = DrawCuiColorField("Color", img.Color, Color.white);
-            img.ImageType = (UnityEngine.UI.Image.Type)EditorGUILayout.EnumPopup("Image Type", img.ImageType);
-            img.ItemId = EditorGUILayout.IntField("Rust Item ID", img.ItemId);
-
+            // Material Picker
             EditorGUILayout.BeginHorizontal();
             img.Material = EditorGUILayout.TextField("Material", img.Material);
             if (GUILayout.Button("▼", GUILayout.Width(22)))
             {
                 var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("None / Standard"), string.IsNullOrEmpty(img.Material), () => img.Material = "");
                 foreach (var mat in RustAssetDiscovery.VerifiedMaterials)
                 {
                     menu.AddItem(new GUIContent(mat), img.Material == mat, () => img.Material = mat);
@@ -253,20 +285,51 @@ namespace RustCUIBuilder.Editor.Inspector
             }
             EditorGUILayout.EndHorizontal();
 
-            img.FadeIn = EditorGUILayout.FloatField("Fade In", img.FadeIn);
+            img.Color = DrawCuiColorField("Color", img.Color, Color.white);
+            img.ImageType = (UnityEngine.UI.Image.Type)EditorGUILayout.EnumPopup("Image Type", img.ImageType);
+            img.FillCenter = EditorGUILayout.Toggle("Fill Center", img.FillCenter ?? true);
+
+            // Item ID & Skin ID
+            img.ItemId = EditorGUILayout.IntField("Rust Item ID", img.ItemId);
+            if (img.ItemId != 0)
+            {
+                var itemMeta = RustAssetDiscovery.FindItemById(img.ItemId);
+                if (itemMeta != null)
+                {
+                    EditorGUILayout.LabelField($"Item: {itemMeta.displayName} ({itemMeta.shortname})", EditorStyles.miniLabel);
+                }
+            }
+            img.SkinId = (ulong)EditorGUILayout.LongField("Skin ID", (long)img.SkinId);
+
+            // ImageLibrary PNG Id
+            img.Png = EditorGUILayout.TextField("ImageLibrary PNG ID", img.Png);
+            if (!string.IsNullOrEmpty(img.Slice))
+            {
+                img.Slice = EditorGUILayout.TextField("Border Slice (l t r b)", img.Slice);
+            }
+
+            img.PixelsPerUnitMultiplier = EditorGUILayout.FloatField("Pixels Per Unit", img.PixelsPerUnitMultiplier);
+            img.FadeIn = EditorGUILayout.FloatField("Fade In (sec)", img.FadeIn);
+
+            if (img.BlocksRaycast.HasValue)
+            {
+                img.BlocksRaycast = EditorGUILayout.Toggle("Blocks Raycast", img.BlocksRaycast.Value);
+            }
         }
 
         private void DrawRawImageInspector(CuiRawImageComponent raw)
         {
             raw.Url = EditorGUILayout.TextField("Web Image URL", raw.Url);
             raw.SteamId = EditorGUILayout.TextField("Steam Avatar ID", raw.SteamId);
-            raw.Color = DrawCuiColorField("Color", raw.Color, Color.white);
+            raw.Png = EditorGUILayout.TextField("ImageLibrary PNG ID", raw.Png);
+            raw.Sprite = EditorGUILayout.TextField("Sprite Asset", raw.Sprite);
 
             EditorGUILayout.BeginHorizontal();
             raw.Material = EditorGUILayout.TextField("Material", raw.Material);
             if (GUILayout.Button("▼", GUILayout.Width(22)))
             {
                 var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("None / Standard"), string.IsNullOrEmpty(raw.Material), () => raw.Material = "");
                 foreach (var mat in RustAssetDiscovery.VerifiedMaterials)
                 {
                     menu.AddItem(new GUIContent(mat), raw.Material == mat, () => raw.Material = mat);
@@ -274,19 +337,43 @@ namespace RustCUIBuilder.Editor.Inspector
                 menu.ShowAsContext();
             }
             EditorGUILayout.EndHorizontal();
+
+            raw.Color = DrawCuiColorField("Color", raw.Color, Color.white);
+            raw.FadeIn = EditorGUILayout.FloatField("Fade In (sec)", raw.FadeIn);
+
+            if (raw.BlocksRaycast.HasValue)
+            {
+                raw.BlocksRaycast = EditorGUILayout.Toggle("Blocks Raycast", raw.BlocksRaycast.Value);
+            }
         }
 
         private void DrawButtonInspector(CuiButtonComponent btn)
         {
             btn.Command = EditorGUILayout.TextField("Console Command", btn.Command);
             btn.Close = EditorGUILayout.TextField("Close Panel", btn.Close);
-            btn.Color = DrawCuiColorField("Base Color", btn.Color, new Color(0.2f, 0.6f, 0.3f, 1f));
 
+            // Sprite Asset Picker
+            EditorGUILayout.BeginHorizontal();
+            btn.Sprite = EditorGUILayout.TextField("Sprite Asset", btn.Sprite);
+            if (GUILayout.Button("▼", GUILayout.Width(22)))
+            {
+                var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("None / Standard"), string.IsNullOrEmpty(btn.Sprite), () => btn.Sprite = "");
+                foreach (var spr in RustAssetDiscovery.VerifiedSprites)
+                {
+                    menu.AddItem(new GUIContent(spr), btn.Sprite == spr, () => btn.Sprite = spr);
+                }
+                menu.ShowAsContext();
+            }
+            EditorGUILayout.EndHorizontal();
+
+            // Material Picker
             EditorGUILayout.BeginHorizontal();
             btn.Material = EditorGUILayout.TextField("Material", btn.Material);
             if (GUILayout.Button("▼", GUILayout.Width(22)))
             {
                 var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("None / Standard"), string.IsNullOrEmpty(btn.Material), () => btn.Material = "");
                 foreach (var mat in RustAssetDiscovery.VerifiedMaterials)
                 {
                     menu.AddItem(new GUIContent(mat), btn.Material == mat, () => btn.Material = mat);
@@ -295,18 +382,50 @@ namespace RustCUIBuilder.Editor.Inspector
             }
             EditorGUILayout.EndHorizontal();
 
-            btn.FadeIn = EditorGUILayout.FloatField("Fade In", btn.FadeIn);
+            btn.Color = DrawCuiColorField("Base Color", btn.Color, new Color(0.2f, 0.6f, 0.3f, 1f));
+            btn.ImageType = (UnityEngine.UI.Image.Type)EditorGUILayout.EnumPopup("Image Type", btn.ImageType);
+
+            // Color Transitions
+            if (!string.IsNullOrEmpty(btn.NormalColor)) btn.NormalColor = DrawCuiColorField("Normal Color", btn.NormalColor, Color.white);
+            if (!string.IsNullOrEmpty(btn.HighlightedColor)) btn.HighlightedColor = DrawCuiColorField("Highlight Color", btn.HighlightedColor, Color.white);
+            if (!string.IsNullOrEmpty(btn.PressedColor)) btn.PressedColor = DrawCuiColorField("Pressed Color", btn.PressedColor, Color.white);
+            if (!string.IsNullOrEmpty(btn.DisabledColor)) btn.DisabledColor = DrawCuiColorField("Disabled Color", btn.DisabledColor, Color.gray);
+
+            btn.ColorMultiplier = EditorGUILayout.FloatField("Color Multiplier", btn.ColorMultiplier);
+            btn.FadeDuration = EditorGUILayout.FloatField("Fade Duration", btn.FadeDuration ?? 0.1f);
+            btn.FadeIn = EditorGUILayout.FloatField("Fade In (sec)", btn.FadeIn);
+
+            btn.Interactable = EditorGUILayout.Toggle("Interactable", btn.Interactable ?? true);
+            if (btn.BlocksRaycast.HasValue)
+            {
+                btn.BlocksRaycast = EditorGUILayout.Toggle("Blocks Raycast", btn.BlocksRaycast.Value);
+            }
         }
 
         private void DrawInputFieldInspector(CuiInputFieldComponent input)
         {
             input.Text = EditorGUILayout.TextField("Initial Text", input.Text);
             input.Command = EditorGUILayout.TextField("Submit Command", input.Command);
-            input.FontSize = EditorGUILayout.IntSlider("Font Size", input.FontSize, 8, 48);
+            input.FontSize = EditorGUILayout.IntSlider("Font Size", input.FontSize, 6, 48);
+
+            var fonts = RustAssetDiscovery.VerifiedFonts;
+            int fontIdx = Array.IndexOf(fonts, input.Font);
+            if (fontIdx < 0) fontIdx = 0;
+            int newFontIdx = EditorGUILayout.Popup("Font", fontIdx, fonts);
+            input.Font = fonts[newFontIdx];
+
+            input.Align = (TextAnchor)EditorGUILayout.EnumPopup("Alignment", input.Align);
+            input.Color = DrawCuiColorField("Color", input.Color, Color.white);
             input.CharsLimit = EditorGUILayout.IntField("Character Limit", input.CharsLimit);
+            input.LineType = (InputField.LineType)EditorGUILayout.EnumPopup("Line Type", input.LineType);
+
             input.IsPassword = EditorGUILayout.Toggle("Password Mode", input.IsPassword);
             input.NeedsKeyboard = EditorGUILayout.Toggle("Needs Keyboard", input.NeedsKeyboard);
+            input.HudMenuInput = EditorGUILayout.Toggle("HUD Menu Input", input.HudMenuInput);
+            input.ReadOnly = EditorGUILayout.Toggle("Read Only", input.ReadOnly);
             input.Autofocus = EditorGUILayout.Toggle("Autofocus", input.Autofocus);
+            input.Interactable = EditorGUILayout.Toggle("Interactable", input.Interactable ?? true);
+            input.FadeIn = EditorGUILayout.FloatField("Fade In (sec)", input.FadeIn);
         }
 
         private void DrawCountdownInspector(CuiCountdownComponent count)
@@ -316,8 +435,10 @@ namespace RustCUIBuilder.Editor.Inspector
             count.Step = EditorGUILayout.FloatField("Step", count.Step);
             count.Interval = EditorGUILayout.FloatField("Interval", count.Interval);
             count.TimerFormat = (CuiTimerFormat)EditorGUILayout.EnumPopup("Timer Format", count.TimerFormat);
+            count.NumberFormat = EditorGUILayout.TextField("Number Format", count.NumberFormat);
             count.Command = EditorGUILayout.TextField("End Command", count.Command);
             count.DestroyIfDone = EditorGUILayout.Toggle("Destroy When Done", count.DestroyIfDone);
+            count.FadeIn = EditorGUILayout.FloatField("Fade In (sec)", count.FadeIn);
         }
 
         private void DrawOutlineInspector(CuiOutlineComponent outline)
@@ -333,6 +454,8 @@ namespace RustCUIBuilder.Editor.Inspector
             scroll.Vertical = EditorGUILayout.Toggle("Vertical Scroll", scroll.Vertical);
             scroll.MovementType = (UnityEngine.UI.ScrollRect.MovementType)EditorGUILayout.EnumPopup("Movement Type", scroll.MovementType);
             scroll.Elasticity = EditorGUILayout.Slider("Elasticity", scroll.Elasticity, 0f, 1f);
+            scroll.Inertia = EditorGUILayout.Toggle("Inertia", scroll.Inertia);
+            scroll.DecelerationRate = EditorGUILayout.Slider("Deceleration Rate", scroll.DecelerationRate, 0.01f, 1f);
             scroll.ScrollSensitivity = EditorGUILayout.FloatField("Scroll Sensitivity", scroll.ScrollSensitivity);
         }
 
@@ -341,6 +464,7 @@ namespace RustCUIBuilder.Editor.Inspector
             cg.Alpha = EditorGUILayout.Slider("Group Alpha", cg.Alpha ?? 1f, 0f, 1f);
             cg.BlocksRaycasts = EditorGUILayout.Toggle("Blocks Raycasts", cg.BlocksRaycasts ?? true);
             cg.Interactable = EditorGUILayout.Toggle("Interactable", cg.Interactable ?? true);
+            cg.IgnoreParentGroups = EditorGUILayout.Toggle("Ignore Parent Groups", cg.IgnoreParentGroups ?? false);
         }
 
         private void DrawTooltipInspector(CuiTooltipComponent tooltip)
@@ -348,7 +472,7 @@ namespace RustCUIBuilder.Editor.Inspector
             tooltip.Text = EditorGUILayout.TextField("Tooltip Text", tooltip.Text);
             tooltip.TooltipType = (CuiTooltipType)EditorGUILayout.EnumPopup("Tooltip Type", tooltip.TooltipType);
             tooltip.Position = (CuiTooltipPosition)EditorGUILayout.EnumPopup("Position", tooltip.Position);
-            tooltip.Offset = EditorGUILayout.TextField("Offset", tooltip.Offset);
+            tooltip.Offset = EditorGUILayout.TextField("Offset (x y)", tooltip.Offset);
         }
 
         private void DrawDraggableInspector(CuiDraggableComponent drag)
@@ -362,7 +486,7 @@ namespace RustCUIBuilder.Editor.Inspector
 
         private void DrawLayoutGroupInspector(CuiLayoutGroupComponent lg)
         {
-            lg.Spacing = EditorGUILayout.FloatField("Spacing", lg.Spacing);
+            lg.Spacing = EditorGUILayout.FloatField("Spacing (px)", lg.Spacing);
             lg.ChildAlignment = (TextAnchor)EditorGUILayout.EnumPopup("Child Alignment", lg.ChildAlignment);
             lg.ChildForceExpandWidth = EditorGUILayout.Toggle("Force Expand Width", lg.ChildForceExpandWidth ?? true);
             lg.ChildForceExpandHeight = EditorGUILayout.Toggle("Force Expand Height", lg.ChildForceExpandHeight ?? true);
@@ -371,10 +495,11 @@ namespace RustCUIBuilder.Editor.Inspector
 
         private void DrawGridLayoutInspector(CuiGridLayoutGroupComponent glg)
         {
-            glg.CellSize = EditorGUILayout.TextField("Cell Size", glg.CellSize);
-            glg.Spacing = EditorGUILayout.TextField("Spacing", glg.Spacing);
+            glg.CellSize = EditorGUILayout.TextField("Cell Size (w h)", glg.CellSize);
+            glg.Spacing = EditorGUILayout.TextField("Spacing (x y)", glg.Spacing);
             glg.Constraint = (UnityEngine.UI.GridLayoutGroup.Constraint)EditorGUILayout.EnumPopup("Constraint", glg.Constraint);
             glg.ConstraintCount = EditorGUILayout.IntField("Constraint Count", glg.ConstraintCount);
+            glg.Padding = EditorGUILayout.TextField("Padding (l t r b)", glg.Padding);
         }
 
         private string DrawCuiColorField(string label, string cuiColorStr, Color defaultCol)

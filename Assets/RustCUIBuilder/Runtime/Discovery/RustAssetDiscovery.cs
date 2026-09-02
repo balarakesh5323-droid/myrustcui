@@ -15,7 +15,7 @@ namespace RustCUIBuilder.Runtime.Discovery
 
     /// <summary>
     /// Discovers, indexes, and caches Rust assets including 1,723 item icons from Bundles/items,
-    /// authentic sprites, materials, fonts, and high-fidelity procedural icon fallbacks.
+    /// authentic sprites via RustBundleManager, materials, fonts, and procedural icon fallbacks.
     /// </summary>
     public static class RustAssetDiscovery
     {
@@ -157,28 +157,47 @@ namespace RustCUIBuilder.Runtime.Discovery
             AllUiSpritesList.Clear();
             LoadedSpriteCache.Clear();
 
-            // 1. Initialize High-Fidelity UI Sprites & Icons
+            // 1. Initialize Rust Bundle Manager
+            RustBundleManager.Initialize();
+
+            // 2. Initialize UI Sprites (Authentic bundle load first, procedural fallback second)
             foreach (var spritePath in VerifiedSprites)
             {
                 string filename = Path.GetFileNameWithoutExtension(spritePath);
                 string category = spritePath.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
 
-                var spriteObj = GenerateOrLoadSprite(spritePath, filename);
-                AllUiSpritesList.Add(new UiSpriteMetadata
+                var authenticSprite = RustBundleManager.LoadSprite(spritePath);
+                if (authenticSprite != null)
                 {
-                    path = spritePath,
-                    name = filename,
-                    category = category,
-                    sprite = spriteObj,
-                    isBundleLoaded = false
-                });
-                if (spriteObj != null)
+                    AllUiSpritesList.Add(new UiSpriteMetadata
+                    {
+                        path = spritePath,
+                        name = filename,
+                        category = category,
+                        sprite = authenticSprite,
+                        isBundleLoaded = true
+                    });
+                    LoadedSpriteCache[spritePath] = authenticSprite;
+                }
+                else
                 {
-                    LoadedSpriteCache[spritePath] = spriteObj;
+                    var spriteObj = GenerateOrLoadSprite(spritePath, filename);
+                    AllUiSpritesList.Add(new UiSpriteMetadata
+                    {
+                        path = spritePath,
+                        name = filename,
+                        category = category,
+                        sprite = spriteObj,
+                        isBundleLoaded = false
+                    });
+                    if (spriteObj != null)
+                    {
+                        LoadedSpriteCache[spritePath] = spriteObj;
+                    }
                 }
             }
 
-            // 2. Discover Item Icons from Steam Rust installation
+            // 3. Discover Item Icons from Steam Rust installation
             var install = SteamDiscovery.DiscoverRustInstallation();
             if (install.IsValid && !string.IsNullOrEmpty(install.ItemsBundlePath) && Directory.Exists(install.ItemsBundlePath))
             {
@@ -260,7 +279,15 @@ namespace RustCUIBuilder.Runtime.Discovery
             if (LoadedSpriteCache.TryGetValue(path, out var cached) && cached != null)
                 return cached;
 
-            // Check if it's an item icon shortname
+            // 1. Check Authentic Rust Bundle Manager
+            var authentic = RustBundleManager.LoadSprite(path);
+            if (authentic != null)
+            {
+                LoadedSpriteCache[path] = authentic;
+                return authentic;
+            }
+
+            // 2. Check if it's an item icon shortname
             var item = FindItemByName(path);
             if (item != null)
             {
@@ -272,7 +299,7 @@ namespace RustCUIBuilder.Runtime.Discovery
                 }
             }
 
-            // Fallback procedural sprite
+            // 3. Fallback procedural sprite
             var sprite = GenerateOrLoadSprite(path, Path.GetFileNameWithoutExtension(path));
             if (sprite != null)
             {

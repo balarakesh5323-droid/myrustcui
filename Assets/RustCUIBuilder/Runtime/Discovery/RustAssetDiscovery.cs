@@ -297,10 +297,23 @@ namespace RustCUIBuilder.Runtime.Discovery
         {
             if (string.IsNullOrEmpty(path)) return null;
 
+            // 1. Check if cached
             if (LoadedSpriteCache.TryGetValue(path, out var cached) && cached != null)
+            {
+                // If cached is a procedural fallback (64x64) and bundle manager is now ready, try loading authentic asset
+                if (cached.rect.width == 64 && cached.rect.height == 64 && RustBundleManager.IsInitialized)
+                {
+                    var auth = RustBundleManager.LoadSprite(path);
+                    if (auth != null)
+                    {
+                        LoadedSpriteCache[path] = auth;
+                        return auth;
+                    }
+                }
                 return cached;
+            }
 
-            // 1. Check Authentic Rust Bundle Manager
+            // 2. Check Authentic Rust Bundle Manager
             var authentic = RustBundleManager.LoadSprite(path);
             if (authentic != null)
             {
@@ -308,7 +321,7 @@ namespace RustCUIBuilder.Runtime.Discovery
                 return authentic;
             }
 
-            // 2. Check if it's an item icon shortname
+            // 3. Check if it's an item icon shortname
             var item = FindItemByName(path);
             if (item != null)
             {
@@ -320,7 +333,7 @@ namespace RustCUIBuilder.Runtime.Discovery
                 }
             }
 
-            // 3. Fallback procedural sprite
+            // 4. Fallback procedural sprite
             var sprite = GenerateOrLoadSprite(path, Path.GetFileNameWithoutExtension(path));
             if (sprite != null)
             {

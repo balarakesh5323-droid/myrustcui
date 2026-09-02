@@ -388,7 +388,13 @@ namespace RustCUIBuilder.Editor.Canvas
             {
                 var prevCol = GUI.color;
                 GUI.color = fillColor;
-                GUI.DrawTexture(elemScreenRect, elemSprite.texture, ScaleMode.ScaleToFit);
+                Rect uv = new Rect(
+                    elemSprite.rect.x / elemSprite.texture.width,
+                    elemSprite.rect.y / elemSprite.texture.height,
+                    elemSprite.rect.width / elemSprite.texture.width,
+                    elemSprite.rect.height / elemSprite.texture.height
+                );
+                GUI.DrawTextureWithTexCoords(elemScreenRect, elemSprite.texture, uv);
                 GUI.color = prevCol;
             }
             else

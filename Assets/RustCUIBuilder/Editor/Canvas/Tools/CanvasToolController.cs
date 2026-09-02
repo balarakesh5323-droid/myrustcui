@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using RustCUIBuilder.Runtime.Core.Models;
@@ -8,7 +9,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
 {
     /// <summary>
     /// Master controller for all interactive canvas tools.
-    /// Manages active tool state, hotkey switching, and event delegation.
+    /// Manages active tool state, hotkey switching, unified transform handle rendering,
+    /// and seamless event delegation between Select, Move, and Resize workflows.
     /// </summary>
     public class CanvasToolController
     {
@@ -58,7 +60,13 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             Action onModified,
             Action<string> onCommitUndo)
         {
-            // Handle Tool Hotkeys (Q, W, E, R, T, Y) when canvas has focus and no modifiers are pressed
+            // 1. If ResizeTool is actively dragging/resizing, keep routing directly to it
+            if (_tools.TryGetValue(CanvasToolMode.Resize, out var resizerTool) && resizerTool is ResizeTool resizer && resizer.IsResizing)
+            {
+                return resizer.ProcessEvent(currentEvent, viewportRect, pan, zoom, canvasWidth, canvasHeight, doc, guideSystem, onModified, onCommitUndo);
+            }
+
+            // 2. Handle Tool Hotkeys (Q, W, E, R, T, Y) when no modifiers are pressed
             if (currentEvent.type == EventType.KeyDown && !currentEvent.control && !currentEvent.alt && !currentEvent.command && !currentEvent.shift)
             {
                 if (currentEvent.keyCode == KeyCode.Q) { ActiveMode = CanvasToolMode.Select; currentEvent.Use(); return true; }
@@ -69,27 +77,28 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
                 if (currentEvent.keyCode == KeyCode.Y) { ActiveMode = CanvasToolMode.Pivot; currentEvent.Use(); return true; }
             }
 
-            // In Select/Move mode, if clicking on a resize handle, dynamically delegate to ResizeTool
+            // 3. Seamless Resize Handle Interception in Select and Move modes
             if (_activeMode == CanvasToolMode.Select || _activeMode == CanvasToolMode.Move)
             {
-                var primary = doc?.PrimarySelectedElement;
-                if (primary != null && !primary.IsLocked && currentEvent.type == EventType.MouseDown && currentEvent.button == 0 && !currentEvent.alt)
+                var selected = doc?.SelectedElements.Where(e => !e.IsLocked && !e.IsHidden).ToList();
+                if (selected != null && selected.Count > 0 && currentEvent.type == EventType.MouseDown && currentEvent.button == 0 && !currentEvent.alt)
                 {
-                    var hit = CanvasHitTester.HitTestHandles(
-                        currentEvent.mousePosition, primary, doc,
+                    var hit = CanvasHitTester.HitTestSelectionHandles(
+                        currentEvent.mousePosition, selected, doc,
                         viewportRect, pan, zoom, canvasWidth, canvasHeight,
                         false, false);
 
-                    if (hit.HitType >= HandleHitType.NW && hit.HitType <= HandleHitType.W)
+                    if (hit.HitType >= HandleHitType.NW && hit.HitType <= HandleHitType.EdgeE)
                     {
-                        if (_tools.TryGetValue(CanvasToolMode.Resize, out var resizer))
+                        if (_tools.TryGetValue(CanvasToolMode.Resize, out var resizeInstance))
                         {
-                            return resizer.ProcessEvent(currentEvent, viewportRect, pan, zoom, canvasWidth, canvasHeight, doc, guideSystem, onModified, onCommitUndo);
+                            return resizeInstance.ProcessEvent(currentEvent, viewportRect, pan, zoom, canvasWidth, canvasHeight, doc, guideSystem, onModified, onCommitUndo);
                         }
                     }
                 }
             }
 
+            // 4. Dispatch to Active Tool
             if (ActiveTool != null)
             {
                 return ActiveTool.ProcessEvent(currentEvent, viewportRect, pan, zoom, canvasWidth, canvasHeight, doc, guideSystem, onModified, onCommitUndo);
@@ -106,7 +115,27 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             float canvasHeight,
             CuiDocument doc)
         {
-            if (ActiveTool != null)
+            if (_activeMode == CanvasToolMode.Select || _activeMode == CanvasToolMode.Move || _activeMode == CanvasToolMode.Resize)
+            {
+                // Draw selection marquee if SelectTool is active and dragging
+                if (_activeMode == CanvasToolMode.Select && _tools.TryGetValue(CanvasToolMode.Select, out var selectTool))
+                {
+                    selectTool.DrawToolOverlay(viewportRect, pan, zoom, canvasWidth, canvasHeight, doc);
+                }
+
+                // Draw Move overlays (snap guides, dimension HUD) if MoveTool is active and dragging
+                if (_activeMode == CanvasToolMode.Move && _tools.TryGetValue(CanvasToolMode.Move, out var moveTool))
+                {
+                    moveTool.DrawToolOverlay(viewportRect, pan, zoom, canvasWidth, canvasHeight, doc);
+                }
+
+                // Draw standard 8-handle transform gizmo and cursor rects on selected elements
+                if (_tools.TryGetValue(CanvasToolMode.Resize, out var resizer))
+                {
+                    resizer.DrawToolOverlay(viewportRect, pan, zoom, canvasWidth, canvasHeight, doc);
+                }
+            }
+            else if (ActiveTool != null)
             {
                 ActiveTool.DrawToolOverlay(viewportRect, pan, zoom, canvasWidth, canvasHeight, doc);
             }

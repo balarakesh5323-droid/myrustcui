@@ -155,6 +155,17 @@ namespace RustCUIBuilder.Runtime.Core.Models
             OnSelectionChanged?.Invoke();
         }
 
+        public void SelectAll()
+        {
+            _selectedIds.Clear();
+            foreach (var e in Elements)
+            {
+                _selectedIds.Add(e.Id);
+                e.IsSelected = true;
+            }
+            OnSelectionChanged?.Invoke();
+        }
+
         public void EnsureUniqueName(CuiElementNode node)
         {
             if (node == null) return;

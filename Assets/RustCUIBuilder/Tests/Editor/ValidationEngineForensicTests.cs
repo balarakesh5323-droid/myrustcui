@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using RustCUIBuilder.Runtime.Core.Models;
 using RustCUIBuilder.Runtime.Core.Validation;
@@ -13,9 +14,9 @@ namespace RustCUIBuilder.Tests.Editor
             doc.AddElement(new CuiElementNode { Name = "DuplicateName", Parent = "Overlay" });
             doc.AddElement(new CuiElementNode { Name = "DuplicateName", Parent = "Overlay" });
 
-            var report = CuiValidator.Validate(doc);
+            var report = CuiValidator.ValidateDocument(doc);
             Assert.IsFalse(report.IsValid);
-            Assert.IsTrue(report.Errors.Exists(e => e.Code == CuiValidationErrorCode.DuplicateElementName));
+            Assert.IsTrue(report.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error && d.RuleId == "STRUCT_DUPLICATE_NAME"));
         }
 
         [Test]
@@ -24,9 +25,9 @@ namespace RustCUIBuilder.Tests.Editor
             var doc = new CuiDocument();
             doc.AddElement(new CuiElementNode { Name = "OrphanElement", Parent = "NonExistentParent" });
 
-            var report = CuiValidator.Validate(doc);
+            var report = CuiValidator.ValidateDocument(doc);
             Assert.IsFalse(report.IsValid);
-            Assert.IsTrue(report.Errors.Exists(e => e.Code == CuiValidationErrorCode.MissingParent));
+            Assert.IsTrue(report.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error && d.RuleId == "HIERARCHY_ORPHAN"));
         }
 
         [Test]
@@ -37,9 +38,9 @@ namespace RustCUIBuilder.Tests.Editor
             elem.Components.Add(new CuiRectTransformComponent { AnchorMin = "invalid_anchor_text", AnchorMax = "1 1" });
             doc.AddElement(elem);
 
-            var report = CuiValidator.Validate(doc);
+            var report = CuiValidator.ValidateDocument(doc);
             Assert.IsFalse(report.IsValid);
-            Assert.IsTrue(report.Errors.Exists(e => e.Code == CuiValidationErrorCode.InvalidAnchor));
+            Assert.IsTrue(report.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error && d.RuleId == "RECT_INVALID_ANCHOR_MIN"));
         }
 
         [Test]
@@ -50,9 +51,9 @@ namespace RustCUIBuilder.Tests.Editor
             elem.Components.Add(new CuiRectTransformComponent { AnchorMin = "0.8 0.8", AnchorMax = "0.2 0.2" });
             doc.AddElement(elem);
 
-            var report = CuiValidator.Validate(doc);
+            var report = CuiValidator.ValidateDocument(doc);
             Assert.IsFalse(report.IsValid);
-            Assert.IsTrue(report.Errors.Exists(e => e.Code == CuiValidationErrorCode.InvertedAnchors));
+            Assert.IsTrue(report.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error && d.RuleId == "RECT_INVERTED_ANCHORS"));
         }
 
         [Test]
@@ -63,9 +64,9 @@ namespace RustCUIBuilder.Tests.Editor
             elem.Components.Add(new CuiImageComponent { Color = "not_a_valid_color" });
             doc.AddElement(elem);
 
-            var report = CuiValidator.Validate(doc);
+            var report = CuiValidator.ValidateDocument(doc);
             Assert.IsFalse(report.IsValid);
-            Assert.IsTrue(report.Errors.Exists(e => e.Code == CuiValidationErrorCode.InvalidColor));
+            Assert.IsTrue(report.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Warning && d.RuleId == "COLOR_INVALID_FORMAT"));
         }
     }
 }

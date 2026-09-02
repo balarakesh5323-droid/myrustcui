@@ -24,11 +24,11 @@ namespace RustCUIBuilder.Editor.Canvas
     /// </summary>
     public class CuiCanvasEditorView
     {
-        private Vector2 _panOffset = new Vector2(40f, 40f);
+        private Vector2 _panOffset = new Vector2(60f, 40f);
         private float _zoom = 0.55f;
         private bool _isPanning;
         private Vector2 _lastMousePos;
-        private bool _hasInitializedView = false;
+        private bool _hasFitted = false;
 
         public CanvasGuideSystem GuideSystem { get; } = new CanvasGuideSystem();
         public CanvasToolController ToolController { get; } = new CanvasToolController();
@@ -50,11 +50,11 @@ namespace RustCUIBuilder.Editor.Canvas
             var topToolbarRect = new Rect(viewRect.x, viewRect.y, viewRect.width, toolbarHeight);
             var canvasAreaRect = new Rect(viewRect.x, viewRect.y + toolbarHeight, viewRect.width, viewRect.height - toolbarHeight);
 
-            // Auto-fit canvas on first display
-            if (!_hasInitializedView && canvasAreaRect.width > 200)
+            // Auto-fit canvas on first display with real window width
+            if (!_hasFitted && canvasAreaRect.width > 300 && canvasAreaRect.height > 200)
             {
                 FitCanvas(canvasAreaRect);
-                _hasInitializedView = true;
+                _hasFitted = true;
             }
 
             _canvasControlId = GUIUtility.GetControlID(FocusType.Keyboard);
@@ -106,7 +106,7 @@ namespace RustCUIBuilder.Editor.Canvas
             }
 
             // 7. Draw Top Tool Selector Bar
-            DrawTopToolbar(topToolbarRect, doc, onModified, onCommitUndo, canvasW, canvasH);
+            DrawTopToolbar(topToolbarRect, doc, onModified, onCommitUndo, canvasAreaRect, canvasW, canvasH);
 
             // 8. Draw Bottom Right Canvas Controls (Zoom / Snap / BG)
             DrawBottomToolbar(canvasAreaRect, doc);
@@ -138,6 +138,14 @@ namespace RustCUIBuilder.Editor.Canvas
             // Track hovered element for tooltips & debug
             var hit = CanvasHitTester.HitTestElements(e.mousePosition, doc, viewRect, _panOffset, _zoom, canvasW, canvasH);
             _hoveredElementName = hit != null ? hit.Name : "";
+
+            // Hotkey F: Fit to view
+            if (e.type == EventType.KeyDown && e.keyCode == KeyCode.F && !e.control && !e.alt && !e.command && !e.shift)
+            {
+                FitCanvas(viewRect);
+                e.Use();
+                return;
+            }
 
             // Pan: Middle mouse button or Alt + Left click
             if (e.type == EventType.MouseDown && (e.button == 2 || (e.button == 0 && e.alt)))
@@ -443,73 +451,73 @@ namespace RustCUIBuilder.Editor.Canvas
             Handles.EndGUI();
         }
 
-        private void DrawTopToolbar(Rect topToolbarRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, float canvasW, float canvasH)
+        private void DrawTopToolbar(Rect topToolbarRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, Rect canvasAreaRect, float canvasW, float canvasH)
         {
-            EditorGUI.DrawRect(topToolbarRect, new Color(0.13f, 0.14f, 0.17f, 1f));
+            EditorGUI.DrawRect(topToolbarRect, new Color(0.12f, 0.13f, 0.15f, 1f));
 
-            var contentRect = new Rect(topToolbarRect.x + 6, topToolbarRect.y + 2, topToolbarRect.width - 12, topToolbarRect.height - 4);
+            var contentRect = new Rect(topToolbarRect.x + 4, topToolbarRect.y + 2, topToolbarRect.width - 8, topToolbarRect.height - 4);
             GUILayout.BeginArea(contentRect);
             EditorGUILayout.BeginHorizontal();
 
             // Tools Segment
-            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Select, "Select (Q)", EditorStyles.toolbarButton, GUILayout.Width(66)))
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Select, "Select (Q)", EditorStyles.toolbarButton, GUILayout.Width(68)))
                 ToolController.ActiveMode = CanvasToolMode.Select;
-            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Move, "Move (W)", EditorStyles.toolbarButton, GUILayout.Width(62)))
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Move, "Move (W)", EditorStyles.toolbarButton, GUILayout.Width(64)))
                 ToolController.ActiveMode = CanvasToolMode.Move;
-            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Rotate, "Rotate (E)", EditorStyles.toolbarButton, GUILayout.Width(65)))
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Rotate, "Rotate (E)", EditorStyles.toolbarButton, GUILayout.Width(68)))
                 ToolController.ActiveMode = CanvasToolMode.Rotate;
-            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Resize, "Resize (R)", EditorStyles.toolbarButton, GUILayout.Width(65)))
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Resize, "Resize (R)", EditorStyles.toolbarButton, GUILayout.Width(68)))
                 ToolController.ActiveMode = CanvasToolMode.Resize;
-            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Anchor, "Anchors (T)", EditorStyles.toolbarButton, GUILayout.Width(72)))
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Anchor, "Anchors (T)", EditorStyles.toolbarButton, GUILayout.Width(74)))
                 ToolController.ActiveMode = CanvasToolMode.Anchor;
-            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Pivot, "Pivot (Y)", EditorStyles.toolbarButton, GUILayout.Width(60)))
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Pivot, "Pivot (Y)", EditorStyles.toolbarButton, GUILayout.Width(62)))
                 ToolController.ActiveMode = CanvasToolMode.Pivot;
 
-            GUILayout.Space(8);
+            GUILayout.Space(10);
 
-            // Alignment Tools (Enabled when 2+ elements selected)
+            // Alignment Tools
             var selected = doc?.SelectedElements;
             GUI.enabled = selected != null && selected.Count >= 2;
 
-            if (GUILayout.Button("⇦ Left", EditorStyles.toolbarButton, GUILayout.Width(46)))
+            if (GUILayout.Button("Left", EditorStyles.toolbarButton, GUILayout.Width(38)))
             {
                 CanvasAlignmentEngine.AlignLeft(selected, doc, canvasW, canvasH);
                 onCommitUndo?.Invoke("Align Left");
                 onModified?.Invoke();
             }
-            if (GUILayout.Button("⇨ Right", EditorStyles.toolbarButton, GUILayout.Width(50)))
-            {
-                CanvasAlignmentEngine.AlignRight(selected, doc, canvasW, canvasH);
-                onCommitUndo?.Invoke("Align Right");
-                onModified?.Invoke();
-            }
-            if (GUILayout.Button("⇧ Top", EditorStyles.toolbarButton, GUILayout.Width(46)))
-            {
-                CanvasAlignmentEngine.AlignTop(selected, doc, canvasW, canvasH);
-                onCommitUndo?.Invoke("Align Top");
-                onModified?.Invoke();
-            }
-            if (GUILayout.Button("⇩ Bottom", EditorStyles.toolbarButton, GUILayout.Width(58)))
-            {
-                CanvasAlignmentEngine.AlignBottom(selected, doc, canvasW, canvasH);
-                onCommitUndo?.Invoke("Align Bottom");
-                onModified?.Invoke();
-            }
-            if (GUILayout.Button("⬌ Center", EditorStyles.toolbarButton, GUILayout.Width(58)))
+            if (GUILayout.Button("Center", EditorStyles.toolbarButton, GUILayout.Width(48)))
             {
                 CanvasAlignmentEngine.AlignCenter(selected, doc, canvasW, canvasH);
                 onCommitUndo?.Invoke("Align Center");
                 onModified?.Invoke();
             }
+            if (GUILayout.Button("Right", EditorStyles.toolbarButton, GUILayout.Width(42)))
+            {
+                CanvasAlignmentEngine.AlignRight(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Align Right");
+                onModified?.Invoke();
+            }
+            if (GUILayout.Button("Top", EditorStyles.toolbarButton, GUILayout.Width(36)))
+            {
+                CanvasAlignmentEngine.AlignTop(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Align Top");
+                onModified?.Invoke();
+            }
+            if (GUILayout.Button("Bottom", EditorStyles.toolbarButton, GUILayout.Width(52)))
+            {
+                CanvasAlignmentEngine.AlignBottom(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Align Bottom");
+                onModified?.Invoke();
+            }
 
             GUI.enabled = selected != null && selected.Count >= 3;
-            if (GUILayout.Button("Dist H", EditorStyles.toolbarButton, GUILayout.Width(48)))
+            if (GUILayout.Button("Dist H", EditorStyles.toolbarButton, GUILayout.Width(46)))
             {
                 CanvasAlignmentEngine.DistributeHorizontally(selected, doc, canvasW, canvasH);
                 onCommitUndo?.Invoke("Distribute Horizontally");
                 onModified?.Invoke();
             }
-            if (GUILayout.Button("Dist V", EditorStyles.toolbarButton, GUILayout.Width(48)))
+            if (GUILayout.Button("Dist V", EditorStyles.toolbarButton, GUILayout.Width(46)))
             {
                 CanvasAlignmentEngine.DistributeVertically(selected, doc, canvasW, canvasH);
                 onCommitUndo?.Invoke("Distribute Vertically");
@@ -518,6 +526,12 @@ namespace RustCUIBuilder.Editor.Canvas
             GUI.enabled = true;
 
             GUILayout.FlexibleSpace();
+
+            // Fit Canvas quick button
+            if (GUILayout.Button("Fit (F)", EditorStyles.toolbarButton, GUILayout.Width(48)))
+            {
+                FitCanvas(canvasAreaRect);
+            }
 
             // Debug Overlay Toggle
             CanvasDebugOverlay.IsEnabled = GUILayout.Toggle(CanvasDebugOverlay.IsEnabled, "Debug HUD", EditorStyles.toolbarButton, GUILayout.Width(75));
@@ -560,17 +574,19 @@ namespace RustCUIBuilder.Editor.Canvas
 
         public void FitCanvas(Rect viewRect)
         {
-            float availW = Mathf.Max(100f, viewRect.width - 60f);
-            float availH = Mathf.Max(100f, viewRect.height - 60f);
+            if (viewRect.width < 100 || viewRect.height < 100) return;
+
+            float availW = Mathf.Max(50f, viewRect.width - 60f);
+            float availH = Mathf.Max(50f, viewRect.height - 60f);
             float targetZoomW = availW / CurrentPreset.Width;
             float targetZoomH = availH / CurrentPreset.Height;
-            _zoom = Mathf.Clamp(Mathf.Min(targetZoomW, targetZoomH), 0.25f, 1.5f);
+            _zoom = Mathf.Clamp(Mathf.Min(targetZoomW, targetZoomH), 0.2f, 1.2f);
 
             float screenW = CurrentPreset.Width * _zoom;
             float screenH = CurrentPreset.Height * _zoom;
             _panOffset = new Vector2(
-                Mathf.Max(20f, (viewRect.width - screenW) / 2f),
-                Mathf.Max(20f, (viewRect.height - screenH) / 2f)
+                Mathf.Max(10f, (viewRect.width - screenW) / 2f),
+                Mathf.Max(10f, (viewRect.height - screenH) / 2f)
             );
         }
 

@@ -19,8 +19,9 @@ namespace RustCUIBuilder.Editor.Canvas
 
     /// <summary>
     /// Master interactive 2D canvas viewport editor for Rust CUI Builder.
-    /// Integrates authoritative coordinates, modular tools (Select, Move, Resize, Rotate, Anchor, Pivot),
-    /// multi-element alignment/distribution, zoom-to-cursor, rulers, draggable guides, and debug HUD.
+    /// Provides an authoritative hard-clipped viewport (GUI.BeginGroup / GUI.EndGroup),
+    /// seamless zoom-to-cursor, pan, modular tools, rulers, draggable guides,
+    /// and diagnostic viewport HUD.
     /// </summary>
     public class CuiCanvasEditorView
     {
@@ -44,105 +45,141 @@ namespace RustCUIBuilder.Editor.Canvas
         private int _canvasControlId;
         private string _hoveredElementName = "";
 
-        public void Draw(Rect viewRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo = null)
-        {
-            float toolbarHeight = 26f;
-            var topToolbarRect = new Rect(viewRect.x, viewRect.y, viewRect.width, toolbarHeight);
-            var canvasAreaRect = new Rect(viewRect.x, viewRect.y + toolbarHeight, viewRect.width, viewRect.height - toolbarHeight);
+        public Rect LastViewportRect { get; private set; }
+        public float CurrentZoom => _zoom;
+        public Vector2 CurrentPan => _panOffset;
 
-            // Auto-fit canvas on first display with real window width
-            if (!_hasFitted && canvasAreaRect.width > 300 && canvasAreaRect.height > 200)
+        public void Draw(Rect containerRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo = null)
+        {
+            float topToolbarHeight = 26f;
+            float bottomToolbarHeight = 24f;
+
+            var topToolbarRect = new Rect(containerRect.x, containerRect.y, containerRect.width, topToolbarHeight);
+            var bottomToolbarRect = new Rect(containerRect.x, containerRect.yMax - bottomToolbarHeight, containerRect.width, bottomToolbarHeight);
+            var viewportRect = new Rect(containerRect.x, containerRect.y + topToolbarHeight, containerRect.width, containerRect.height - topToolbarHeight - bottomToolbarHeight);
+
+            LastViewportRect = viewportRect;
+
+            if (viewportRect.width < 50 || viewportRect.height < 50) return;
+
+            // 1. Draw Top Toolbar Header (Outside Viewport)
+            DrawTopToolbar(topToolbarRect, doc, onModified, onCommitUndo, viewportRect);
+
+            // 2. Draw Bottom Controls Toolbar (Outside Viewport)
+            DrawBottomToolbar(bottomToolbarRect, viewportRect);
+
+            // 3. Draw Hard-Clipped Canvas Viewport
+            DrawClippedViewport(viewportRect, doc, onModified, onCommitUndo);
+        }
+
+        private void DrawClippedViewport(Rect viewportRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo)
+        {
+            var localViewportRect = new Rect(0, 0, viewportRect.width, viewportRect.height);
+
+            // Auto-fit canvas on initial load once container dimensions are stable
+            if (!_hasFitted && viewportRect.width > 200 && viewportRect.height > 150)
             {
-                FitCanvas(canvasAreaRect);
+                FitCanvas(localViewportRect);
                 _hasFitted = true;
             }
 
             _canvasControlId = GUIUtility.GetControlID(FocusType.Keyboard);
 
-            // Dark canvas workspace background
-            EditorGUI.DrawRect(canvasAreaRect, new Color(0.09f, 0.10f, 0.12f, 1f));
+            // Hard Clip Group - All rendering and coordinate handling inside this scope is strictly confined to viewportRect
+            GUI.BeginGroup(viewportRect);
+
+            // Dark canvas background
+            EditorGUI.DrawRect(localViewportRect, new Color(0.08f, 0.09f, 0.11f, 1f));
 
             var coords = RustCanvasCoordinates.Instance;
             float canvasW = CurrentPreset.Width;
             float canvasH = CurrentPreset.Height;
 
             // Handle Input & Dispatch to Tools
-            HandleCanvasInput(canvasAreaRect, doc, onModified, onCommitUndo, canvasW, canvasH);
+            HandleCanvasInput(localViewportRect, viewportRect, doc, onModified, onCommitUndo, canvasW, canvasH);
 
-            // Calculate simulated screen frame
-            var screenRect = coords.CanvasToScreen(new Rect(0, 0, canvasW, canvasH), canvasAreaRect, _panOffset, _zoom);
+            // Calculate simulated screen frame in local viewport coordinates
+            var screenRect = coords.CanvasToScreen(new Rect(0, 0, canvasW, canvasH), localViewportRect, _panOffset, _zoom);
 
-            // 1. Draw Rust Game Screen Frame & Background
+            // A. Draw Rust Game Screen Frame & Background
             DrawScreenFrame(screenRect);
 
-            // 2. Draw Grid inside screen bounds
+            // B. Draw Grid inside screen bounds
             if (BackgroundMode == CanvasBackgroundMode.DarkGrid)
             {
-                DrawGrid(screenRect);
+                DrawGrid(screenRect, localViewportRect);
             }
 
-            // 3. Draw Elements (sorted root first)
+            // C. Draw Elements (sorted root first)
             if (doc != null && doc.Elements != null)
             {
                 foreach (var elem in doc.Elements)
                 {
-                    DrawElement(screenRect, elem, doc, canvasAreaRect, canvasW, canvasH);
+                    DrawElement(screenRect, elem, doc, localViewportRect, canvasW, canvasH);
                 }
             }
 
-            // 4. Draw Active Tool Overlay (Marquee, Handles, Anchors, Pivot, etc.)
-            ToolController.DrawToolOverlay(canvasAreaRect, _panOffset, _zoom, canvasW, canvasH, doc);
+            // D. Draw Active Tool Overlay (Marquee, Handles, Anchors, Pivot, etc.)
+            ToolController.DrawToolOverlay(localViewportRect, _panOffset, _zoom, canvasW, canvasH, doc);
 
-            // 5. Draw Draggable Guides
+            // E. Draw Draggable Guides
             if (ShowGuides)
             {
-                DrawGuides(canvasAreaRect, screenRect, canvasW, canvasH);
+                DrawGuides(localViewportRect, screenRect, canvasW, canvasH);
             }
 
-            // 6. Draw Rulers
+            // F. Draw Rulers
             if (ShowRulers)
             {
-                DrawRulers(canvasAreaRect, screenRect, canvasW, canvasH);
+                DrawRulers(localViewportRect, screenRect, canvasW, canvasH);
             }
 
-            // 7. Draw Top Tool Selector Bar
-            DrawTopToolbar(topToolbarRect, doc, onModified, onCommitUndo, canvasAreaRect, canvasW, canvasH);
+            // G. Draw Debug HUD (if enabled)
+            if (CanvasDebugOverlay.IsEnabled)
+            {
+                var mouseViewport = Event.current.mousePosition;
+                var mouseCanvas = coords.ScreenToCanvas(mouseViewport, localViewportRect, _panOffset, _zoom);
+                var mouseRust = coords.CanvasToRust(mouseCanvas, canvasW, canvasH);
+                var mouseWindow = mouseViewport + viewportRect.position;
 
-            // 8. Draw Bottom Right Canvas Controls (Zoom / Snap / BG)
-            DrawBottomToolbar(canvasAreaRect, doc);
+                CanvasDebugOverlay.DrawDebugHUD(
+                    localViewportRect,
+                    viewportRect,
+                    mouseWindow,
+                    mouseViewport,
+                    mouseCanvas,
+                    mouseRust,
+                    ToolController.ActiveTool?.ToolName ?? "None",
+                    _hoveredElementName,
+                    doc?.SelectedIds.Count ?? 0,
+                    _canvasControlId,
+                    Event.current.type,
+                    _zoom,
+                    _panOffset,
+                    canvasW,
+                    canvasH,
+                    new Vector2(Screen.width, Screen.height)
+                );
+            }
 
-            // 9. Draw Debug HUD (if enabled)
-            var mouseScreen = Event.current.mousePosition;
-            var mouseCanvas = coords.ScreenToCanvas(mouseScreen, canvasAreaRect, _panOffset, _zoom);
-            var mouseRust = coords.CanvasToRust(mouseCanvas, canvasW, canvasH);
-            CanvasDebugOverlay.DrawDebugHUD(
-                canvasAreaRect,
-                mouseScreen,
-                mouseCanvas,
-                mouseRust,
-                ToolController.ActiveTool?.ToolName ?? "None",
-                _hoveredElementName,
-                doc?.SelectedIds.Count ?? 0,
-                _canvasControlId,
-                Event.current.type,
-                _zoom,
-                _panOffset
-            );
+            GUI.EndGroup();
         }
 
-        private void HandleCanvasInput(Rect viewRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, float canvasW, float canvasH)
+        private void HandleCanvasInput(Rect localViewportRect, Rect globalViewportRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, float canvasW, float canvasH)
         {
             var e = Event.current;
-            if (!viewRect.Contains(e.mousePosition)) return;
+            if (!localViewportRect.Contains(e.mousePosition)) return;
+
+            var coords = RustCanvasCoordinates.Instance;
 
             // Track hovered element for tooltips & debug
-            var hit = CanvasHitTester.HitTestElements(e.mousePosition, doc, viewRect, _panOffset, _zoom, canvasW, canvasH);
+            var hit = CanvasHitTester.HitTestElements(e.mousePosition, doc, localViewportRect, _panOffset, _zoom, canvasW, canvasH);
             _hoveredElementName = hit != null ? hit.Name : "";
 
             // Hotkey F: Fit to view
             if (e.type == EventType.KeyDown && e.keyCode == KeyCode.F && !e.control && !e.alt && !e.command && !e.shift)
             {
-                FitCanvas(viewRect);
+                FitCanvas(localViewportRect);
                 e.Use();
                 return;
             }
@@ -160,6 +197,7 @@ namespace RustCUIBuilder.Editor.Canvas
             {
                 _panOffset += e.mousePosition - _lastMousePos;
                 _lastMousePos = e.mousePosition;
+                ClampPan(localViewportRect, canvasW, canvasH);
                 e.Use();
                 return;
             }
@@ -173,13 +211,14 @@ namespace RustCUIBuilder.Editor.Canvas
             // Zoom-to-Cursor: Mouse wheel
             if (e.type == EventType.ScrollWheel)
             {
-                float zoomDelta = -e.delta.y * 0.04f;
+                Vector2 canvasPointUnderMouse = coords.ScreenToCanvas(e.mousePosition, localViewportRect, _panOffset, _zoom);
+                float zoomDelta = -e.delta.y * 0.05f;
                 float oldZoom = _zoom;
                 _zoom = Mathf.Clamp(_zoom + zoomDelta, 0.15f, 4.0f);
 
-                // Invariant: mouse cursor remains on the same canvas coordinate
-                var mouseRel = e.mousePosition - (viewRect.position + _panOffset);
-                _panOffset -= mouseRel * (_zoom / oldZoom - 1f);
+                // Exact invariant: point under mouse stays stationary
+                _panOffset = e.mousePosition - canvasPointUnderMouse * _zoom;
+                ClampPan(localViewportRect, canvasW, canvasH);
 
                 e.Use();
                 return;
@@ -224,7 +263,22 @@ namespace RustCUIBuilder.Editor.Canvas
             }
 
             // Dispatch to Active Tool
-            ToolController.ProcessEvent(e, viewRect, _panOffset, _zoom, canvasW, canvasH, doc, GuideSystem, onModified, onCommitUndo);
+            ToolController.ProcessEvent(e, localViewportRect, _panOffset, _zoom, canvasW, canvasH, doc, GuideSystem, onModified, onCommitUndo);
+        }
+
+        private void ClampPan(Rect viewportRect, float canvasW, float canvasH)
+        {
+            float screenW = canvasW * _zoom;
+            float screenH = canvasH * _zoom;
+
+            // Ensure at least 80px of the canvas remains inside the viewport
+            float minPanX = 80f - screenW;
+            float maxPanX = viewportRect.width - 80f;
+            float minPanY = 80f - screenH;
+            float maxPanY = viewportRect.height - 80f;
+
+            _panOffset.x = Mathf.Clamp(_panOffset.x, minPanX, maxPanX);
+            _panOffset.y = Mathf.Clamp(_panOffset.y, minPanY, maxPanY);
         }
 
         private void DrawScreenFrame(Rect screenRect)
@@ -248,7 +302,7 @@ namespace RustCUIBuilder.Editor.Canvas
 
             // Outer border with Rust orange accent
             Handles.BeginGUI();
-            Handles.color = new Color(0.85f, 0.35f, 0.15f, 0.9f);
+            Handles.color = new Color(0.95f, 0.45f, 0.15f, 0.95f);
             Handles.DrawPolyLine(
                 new Vector3(screenRect.xMin, screenRect.yMin, 0),
                 new Vector3(screenRect.xMax, screenRect.yMin, 0),
@@ -262,12 +316,12 @@ namespace RustCUIBuilder.Editor.Canvas
             var labelStyle = new GUIStyle(EditorStyles.miniLabel)
             {
                 fontSize = 9,
-                normal = { textColor = new Color(0.85f, 0.85f, 0.9f, 0.8f) }
+                normal = { textColor = new Color(0.9f, 0.9f, 0.95f, 0.85f) }
             };
             GUI.Label(new Rect(screenRect.x + 8, screenRect.y + 6, 320, 18), $"{CurrentPreset.Name} ({CurrentPreset.Width}x{CurrentPreset.Height})", labelStyle);
         }
 
-        private void DrawGrid(Rect screenRect)
+        private void DrawGrid(Rect screenRect, Rect localViewportRect)
         {
             Handles.BeginGUI();
             Color gridColor = new Color(0.22f, 0.24f, 0.28f, 0.35f);
@@ -288,12 +342,12 @@ namespace RustCUIBuilder.Editor.Canvas
             Handles.EndGUI();
         }
 
-        private void DrawElement(Rect screenRect, CuiElementNode elem, CuiDocument doc, Rect viewRect, float canvasW, float canvasH)
+        private void DrawElement(Rect screenRect, CuiElementNode elem, CuiDocument doc, Rect localViewportRect, float canvasW, float canvasH)
         {
             if (elem.IsHidden) return;
 
             var coords = RustCanvasCoordinates.Instance;
-            var elemScreenRect = coords.GetElementScreenRect(elem, doc, viewRect, _panOffset, _zoom, canvasW, canvasH);
+            var elemScreenRect = coords.GetElementScreenRect(elem, doc, localViewportRect, _panOffset, _zoom, canvasW, canvasH);
 
             // Element Graphics
             var img = elem.GetComponent<CuiImageComponent>();
@@ -384,7 +438,7 @@ namespace RustCUIBuilder.Editor.Canvas
             }
         }
 
-        private void DrawGuides(Rect viewRect, Rect screenRect, float canvasW, float canvasH)
+        private void DrawGuides(Rect localViewportRect, Rect screenRect, float canvasW, float canvasH)
         {
             var coords = RustCanvasCoordinates.Instance;
             Handles.BeginGUI();
@@ -394,24 +448,24 @@ namespace RustCUIBuilder.Editor.Canvas
             {
                 if (g.Orientation == GuideOrientation.Vertical)
                 {
-                    float screenX = coords.CanvasToScreen(new Vector2(g.CanvasPosition, 0), viewRect, _panOffset, _zoom).x;
-                    Handles.DrawLine(new Vector3(screenX, viewRect.y, 0), new Vector3(screenX, viewRect.yMax, 0));
+                    float screenX = coords.CanvasToScreen(new Vector2(g.CanvasPosition, 0), localViewportRect, _panOffset, _zoom).x;
+                    Handles.DrawLine(new Vector3(screenX, 0, 0), new Vector3(screenX, localViewportRect.height, 0));
                 }
                 else
                 {
-                    float screenY = coords.CanvasToScreen(new Vector2(0, g.CanvasPosition), viewRect, _panOffset, _zoom).y;
-                    Handles.DrawLine(new Vector3(viewRect.x, screenY, 0), new Vector3(viewRect.xMax, screenY, 0));
+                    float screenY = coords.CanvasToScreen(new Vector2(0, g.CanvasPosition), localViewportRect, _panOffset, _zoom).y;
+                    Handles.DrawLine(new Vector3(0, screenY, 0), new Vector3(localViewportRect.width, screenY, 0));
                 }
             }
             Handles.EndGUI();
         }
 
-        private void DrawRulers(Rect viewRect, Rect screenRect, float canvasW, float canvasH)
+        private void DrawRulers(Rect localViewportRect, Rect screenRect, float canvasW, float canvasH)
         {
             float rulerThickness = 16f;
-            var topRulerRect = new Rect(viewRect.x + rulerThickness, viewRect.y, viewRect.width - rulerThickness, rulerThickness);
-            var leftRulerRect = new Rect(viewRect.x, viewRect.y + rulerThickness, rulerThickness, viewRect.height - rulerThickness);
-            var cornerRect = new Rect(viewRect.x, viewRect.y, rulerThickness, rulerThickness);
+            var topRulerRect = new Rect(rulerThickness, 0, localViewportRect.width - rulerThickness, rulerThickness);
+            var leftRulerRect = new Rect(0, rulerThickness, rulerThickness, localViewportRect.height - rulerThickness);
+            var cornerRect = new Rect(0, 0, rulerThickness, rulerThickness);
 
             EditorGUI.DrawRect(topRulerRect, new Color(0.12f, 0.13f, 0.16f, 0.98f));
             EditorGUI.DrawRect(leftRulerRect, new Color(0.12f, 0.13f, 0.16f, 0.98f));
@@ -451,13 +505,16 @@ namespace RustCUIBuilder.Editor.Canvas
             Handles.EndGUI();
         }
 
-        private void DrawTopToolbar(Rect topToolbarRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, Rect canvasAreaRect, float canvasW, float canvasH)
+        private void DrawTopToolbar(Rect topToolbarRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, Rect viewportRect)
         {
             EditorGUI.DrawRect(topToolbarRect, new Color(0.12f, 0.13f, 0.15f, 1f));
 
             var contentRect = new Rect(topToolbarRect.x + 4, topToolbarRect.y + 2, topToolbarRect.width - 8, topToolbarRect.height - 4);
             GUILayout.BeginArea(contentRect);
             EditorGUILayout.BeginHorizontal();
+
+            float canvasW = CurrentPreset.Width;
+            float canvasH = CurrentPreset.Height;
 
             // Tools Segment
             if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Select, "Select (Q)", EditorStyles.toolbarButton, GUILayout.Width(68)))
@@ -530,7 +587,7 @@ namespace RustCUIBuilder.Editor.Canvas
             // Fit Canvas quick button
             if (GUILayout.Button("Fit (F)", EditorStyles.toolbarButton, GUILayout.Width(48)))
             {
-                FitCanvas(canvasAreaRect);
+                FitCanvas(new Rect(0, 0, viewportRect.width, viewportRect.height));
             }
 
             // Debug Overlay Toggle
@@ -540,12 +597,11 @@ namespace RustCUIBuilder.Editor.Canvas
             GUILayout.EndArea();
         }
 
-        private void DrawBottomToolbar(Rect viewRect, CuiDocument doc)
+        private void DrawBottomToolbar(Rect bottomToolbarRect, Rect viewportRect)
         {
-            var barRect = new Rect(viewRect.xMax - 470, viewRect.yMax - 26, 460, 22);
-            EditorGUI.DrawRect(barRect, new Color(0.12f, 0.13f, 0.15f, 0.95f));
+            EditorGUI.DrawRect(bottomToolbarRect, new Color(0.12f, 0.13f, 0.15f, 1f));
 
-            GUILayout.BeginArea(barRect);
+            GUILayout.BeginArea(bottomToolbarRect);
             EditorGUILayout.BeginHorizontal();
 
             GUILayout.Label($"Zoom: {Mathf.RoundToInt(_zoom * 100)}%", EditorStyles.miniLabel, GUILayout.Width(62));
@@ -554,7 +610,7 @@ namespace RustCUIBuilder.Editor.Canvas
             // Zoom Presets
             if (GUILayout.Button("Fit", EditorStyles.miniButton, GUILayout.Width(28)))
             {
-                FitCanvas(viewRect);
+                FitCanvas(new Rect(0, 0, viewportRect.width, viewportRect.height));
             }
             if (GUILayout.Button("100%", EditorStyles.miniButton, GUILayout.Width(38)))
             {
@@ -572,21 +628,23 @@ namespace RustCUIBuilder.Editor.Canvas
             GUILayout.EndArea();
         }
 
-        public void FitCanvas(Rect viewRect)
+        public void FitCanvas(Rect localViewportRect)
         {
-            if (viewRect.width < 100 || viewRect.height < 100) return;
+            if (localViewportRect.width < 50 || localViewportRect.height < 50) return;
 
-            float availW = Mathf.Max(50f, viewRect.width - 60f);
-            float availH = Mathf.Max(50f, viewRect.height - 60f);
-            float targetZoomW = availW / CurrentPreset.Width;
-            float targetZoomH = availH / CurrentPreset.Height;
-            _zoom = Mathf.Clamp(Mathf.Min(targetZoomW, targetZoomH), 0.2f, 1.2f);
+            float padding = 40f;
+            float availW = Mathf.Max(50f, localViewportRect.width - padding * 2f);
+            float availH = Mathf.Max(50f, localViewportRect.height - padding * 2f);
+
+            float scaleX = availW / CurrentPreset.Width;
+            float scaleY = availH / CurrentPreset.Height;
+            _zoom = Mathf.Clamp(Mathf.Min(scaleX, scaleY), 0.2f, 2.0f);
 
             float screenW = CurrentPreset.Width * _zoom;
             float screenH = CurrentPreset.Height * _zoom;
             _panOffset = new Vector2(
-                Mathf.Max(10f, (viewRect.width - screenW) / 2f),
-                Mathf.Max(10f, (viewRect.height - screenH) / 2f)
+                (localViewportRect.width - screenW) * 0.5f,
+                (localViewportRect.height - screenH) * 0.5f
             );
         }
 

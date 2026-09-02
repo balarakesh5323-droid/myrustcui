@@ -7,26 +7,74 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
 {
     /// <summary>
     /// Authoritative implementation of the Rust CUI Canvas Coordinate System.
-    /// Handles bi-directional math across Screen (Editor GUI), Canvas (Virtual screen),
-    /// and Rust CUI (Normalized anchors + Pixel offsets).
+    /// Handles bi-directional math across:
+    /// 1. Window/Screen Space (Editor GUI Window coordinates)
+    /// 2. Viewport Space (Local coordinates inside the clipped canvas viewport)
+    /// 3. Canvas Space (Virtual 1920x1080 design resolution)
+    /// 4. Rust CUI Normalized Space (0..1 anchors + pixel offsets)
     /// </summary>
     public class RustCanvasCoordinates : ICanvasCoordinateSystem
     {
         public static readonly RustCanvasCoordinates Instance = new RustCanvasCoordinates();
 
-        public Vector2 ScreenToCanvas(Vector2 screenPos, Rect viewportRect, Vector2 pan, float zoom)
+        // 1. Screen <-> Viewport
+        public Vector2 ScreenToViewport(Vector2 screenPos, Rect viewportRect)
+        {
+            return new Vector2(screenPos.x - viewportRect.x, screenPos.y - viewportRect.y);
+        }
+
+        public Vector2 ViewportToScreen(Vector2 viewportPos, Rect viewportRect)
+        {
+            return new Vector2(viewportPos.x + viewportRect.x, viewportPos.y + viewportRect.y);
+        }
+
+        public Rect ScreenToViewport(Rect screenRect, Rect viewportRect)
+        {
+            return new Rect(screenRect.x - viewportRect.x, screenRect.y - viewportRect.y, screenRect.width, screenRect.height);
+        }
+
+        public Rect ViewportToScreen(Rect localViewportRect, Rect viewportRect)
+        {
+            return new Rect(localViewportRect.x + viewportRect.x, localViewportRect.y + viewportRect.y, localViewportRect.width, localViewportRect.height);
+        }
+
+        // 2. Viewport <-> Canvas
+        public Vector2 ViewportToCanvas(Vector2 viewportPos, Vector2 pan, float zoom)
         {
             if (zoom <= 0f) zoom = 1f;
-            float x = (screenPos.x - (viewportRect.x + pan.x)) / zoom;
-            float y = (screenPos.y - (viewportRect.y + pan.y)) / zoom;
-            return new Vector2(x, y);
+            return new Vector2((viewportPos.x - pan.x) / zoom, (viewportPos.y - pan.y) / zoom);
+        }
+
+        public Vector2 CanvasToViewport(Vector2 canvasPos, Vector2 pan, float zoom)
+        {
+            return new Vector2(pan.x + canvasPos.x * zoom, pan.y + canvasPos.y * zoom);
+        }
+
+        public Rect ViewportToCanvas(Rect localViewportRect, Vector2 pan, float zoom)
+        {
+            var pMin = ViewportToCanvas(new Vector2(localViewportRect.xMin, localViewportRect.yMin), pan, zoom);
+            var pMax = ViewportToCanvas(new Vector2(localViewportRect.xMax, localViewportRect.yMax), pan, zoom);
+            return Rect.MinMaxRect(pMin.x, pMin.y, pMax.x, pMax.y);
+        }
+
+        public Rect CanvasToViewport(Rect canvasRect, Vector2 pan, float zoom)
+        {
+            var pMin = CanvasToViewport(new Vector2(canvasRect.xMin, canvasRect.yMin), pan, zoom);
+            var pMax = CanvasToViewport(new Vector2(canvasRect.xMax, canvasRect.yMax), pan, zoom);
+            return Rect.MinMaxRect(pMin.x, pMin.y, pMax.x, pMax.y);
+        }
+
+        // 3. Screen <-> Canvas (Composed via Viewport)
+        public Vector2 ScreenToCanvas(Vector2 screenPos, Rect viewportRect, Vector2 pan, float zoom)
+        {
+            var localPos = ScreenToViewport(screenPos, viewportRect);
+            return ViewportToCanvas(localPos, pan, zoom);
         }
 
         public Vector2 CanvasToScreen(Vector2 canvasPos, Rect viewportRect, Vector2 pan, float zoom)
         {
-            float x = viewportRect.x + pan.x + canvasPos.x * zoom;
-            float y = viewportRect.y + pan.y + canvasPos.y * zoom;
-            return new Vector2(x, y);
+            var localPos = CanvasToViewport(canvasPos, pan, zoom);
+            return ViewportToScreen(localPos, viewportRect);
         }
 
         public Rect ScreenToCanvas(Rect screenRect, Rect viewportRect, Vector2 pan, float zoom)
@@ -43,6 +91,7 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
             return Rect.MinMaxRect(pMin.x, pMin.y, pMax.x, pMax.y);
         }
 
+        // 4. Canvas <-> Rust Normalized (0..1)
         public Vector2 RustToCanvas(Vector2 rustNormalized, float canvasWidth, float canvasHeight)
         {
             return new Vector2(rustNormalized.x * canvasWidth, (1.0f - rustNormalized.y) * canvasHeight);
@@ -55,6 +104,7 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
             return new Vector2(normX, normY);
         }
 
+        // 5. Element Canvas Rect Calculation
         public Rect GetElementCanvasRect(CuiElementNode elem, CuiDocument doc, float canvasWidth, float canvasHeight)
         {
             if (elem == null) return new Rect(0, 0, canvasWidth, canvasHeight);
@@ -107,7 +157,6 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
             Vector2 anchorMin = RustCanvasScaler.ParseVector2(rectComp.AnchorMin, Vector2.zero);
             Vector2 anchorMax = RustCanvasScaler.ParseVector2(rectComp.AnchorMax, Vector2.one);
 
-            // Canvas space anchor corners
             Vector2 cNW = new Vector2(parentRect.x + parentRect.width * anchorMin.x, parentRect.y + parentRect.height * (1f - anchorMax.y));
             Vector2 cNE = new Vector2(parentRect.x + parentRect.width * anchorMax.x, parentRect.y + parentRect.height * (1f - anchorMax.y));
             Vector2 cSW = new Vector2(parentRect.x + parentRect.width * anchorMin.x, parentRect.y + parentRect.height * (1f - anchorMin.y));

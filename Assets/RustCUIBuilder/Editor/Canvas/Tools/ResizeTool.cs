@@ -52,7 +52,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             Action onModified,
             Action<string> onCommitUndo)
         {
-            if (doc == null || !viewportRect.Contains(currentEvent.mousePosition)) return false;
+            if (doc == null) return false;
+            if (!viewportRect.Contains(currentEvent.mousePosition) && !_isResizing) return false;
 
             var selected = doc.SelectedElements.Where(e => !e.IsLocked && !e.IsHidden).ToList();
             if (selected.Count == 0) return false;

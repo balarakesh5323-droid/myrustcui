@@ -33,6 +33,11 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
 
         public ICanvasTool ActiveTool => _tools.TryGetValue(_activeMode, out var tool) ? tool : null;
 
+        public T GetTool<T>(CanvasToolMode mode) where T : class, ICanvasTool
+        {
+            return _tools.TryGetValue(mode, out var tool) ? tool as T : null;
+        }
+
         public CanvasToolController()
         {
             RegisterTool(new SelectTool());

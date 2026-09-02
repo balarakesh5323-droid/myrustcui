@@ -176,7 +176,22 @@ namespace RustCUIBuilder.Editor.Canvas
         private void HandleCanvasInput(Rect localViewportRect, Rect globalViewportRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, float canvasW, float canvasH)
         {
             var e = Event.current;
-            if (!localViewportRect.Contains(e.mousePosition)) return;
+
+            // Allow drag/up events to reach active tools even when mouse exits viewport.
+            // Without this, releasing the mouse slightly outside the viewport drops the MouseUp
+            // and tools never commit their changes, causing a visual "snap back."
+            bool isActiveToolInteracting = false;
+            if (ToolController.ActiveTool is Tools.ResizeTool rt && rt.IsResizing) isActiveToolInteracting = true;
+            else if (ToolController.ActiveTool is Tools.MoveTool mt && mt.IsDragging) isActiveToolInteracting = true;
+            else if (ToolController.ActiveTool is Tools.RotateTool rot && rot.IsRotating) isActiveToolInteracting = true;
+            // Also check the resize tool directly since it can be active even when ActiveTool is Select/Move
+            if (!isActiveToolInteracting)
+            {
+                var resizeTool = ToolController.GetTool<Tools.ResizeTool>(Tools.CanvasToolMode.Resize);
+                if (resizeTool != null && resizeTool.IsResizing) isActiveToolInteracting = true;
+            }
+
+            if (!localViewportRect.Contains(e.mousePosition) && !isActiveToolInteracting) return;
 
             var coords = RustCanvasCoordinates.Instance;
 

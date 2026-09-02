@@ -18,6 +18,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
         public string ToolName => "Move";
 
         private bool _isDragging;
+        public bool IsDragging => _isDragging;
         private Vector2 _dragStartScreen;
         private Vector2 _dragStartCanvas;
         private Rect _primaryStartCanvasRect;
@@ -42,7 +43,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             Action onModified,
             Action<string> onCommitUndo)
         {
-            if (doc == null || !viewportRect.Contains(currentEvent.mousePosition)) return false;
+            if (doc == null) return false;
+            if (!viewportRect.Contains(currentEvent.mousePosition) && !_isDragging) return false;
 
             var coords = RustCanvasCoordinates.Instance;
 

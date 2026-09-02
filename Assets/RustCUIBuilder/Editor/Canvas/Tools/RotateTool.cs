@@ -16,6 +16,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
         public string ToolName => "Rotate";
 
         private bool _isRotating;
+        public bool IsRotating => _isRotating;
         private float _initialRotation;
         private float _initialAngle;
 
@@ -34,7 +35,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             Action onModified,
             Action<string> onCommitUndo)
         {
-            if (doc == null || !viewportRect.Contains(currentEvent.mousePosition)) return false;
+            if (doc == null) return false;
+            if (!viewportRect.Contains(currentEvent.mousePosition) && !_isRotating) return false;
 
             var primary = doc.PrimarySelectedElement;
             if (primary == null || primary.IsLocked || primary.IsHidden) return false;

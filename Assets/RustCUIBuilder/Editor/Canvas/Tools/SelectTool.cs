@@ -35,7 +35,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             Action onModified,
             Action<string> onCommitUndo)
         {
-            if (doc == null || !viewportRect.Contains(currentEvent.mousePosition)) return false;
+            if (doc == null) return false;
+            if (!viewportRect.Contains(currentEvent.mousePosition) && !_isMarqueeDragging) return false;
 
             // 1. Mouse Down
             if (currentEvent.type == EventType.MouseDown && currentEvent.button == 0 && !currentEvent.alt)

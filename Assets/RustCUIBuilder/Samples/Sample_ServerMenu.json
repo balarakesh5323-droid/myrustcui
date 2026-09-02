@@ -1,0 +1,89 @@
+[
+  {
+    "name": "ServerMenu_Root",
+    "parent": "Overlay",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Image",
+        "color": "0.08 0.09 0.12 0.96",
+        "sprite": "assets/content/ui/ui.background.tile.psd"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.2 0.15",
+        "anchormax": "0.8 0.85"
+      },
+      {
+        "type": "NeedsCursor"
+      }
+    ]
+  },
+  {
+    "name": "ServerMenu_Header",
+    "parent": "ServerMenu_Root",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Text",
+        "text": "<b>RUST LEGENDS 10X SERVER MENU</b>",
+        "fontSize": 20,
+        "align": "MiddleCenter",
+        "color": "0.95 0.95 0.98 1.0"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.05 0.90",
+        "anchormax": "0.85 0.98"
+      }
+    ]
+  },
+  {
+    "name": "ServerMenu_CloseBtn",
+    "parent": "ServerMenu_Root",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Button",
+        "command": "servermenu.close",
+        "close": "ServerMenu_Root",
+        "color": "0.8 0.25 0.25 0.9"
+      },
+      {
+        "type": "UnityEngine.UI.Text",
+        "text": "X",
+        "fontSize": 14,
+        "align": "MiddleCenter",
+        "color": "1 1 1 1"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.92 0.90",
+        "anchormax": "0.97 0.97"
+      }
+    ]
+  },
+  {
+    "name": "ServerMenu_Timer",
+    "parent": "ServerMenu_Root",
+    "components": [
+      {
+        "type": "Countdown",
+        "startTime": 3600,
+        "endTime": 0,
+        "step": 1,
+        "timerFormat": "MinutesSeconds",
+        "command": "servermenu.eventend"
+      },
+      {
+        "type": "UnityEngine.UI.Text",
+        "text": "Next Wipe: 60:00",
+        "fontSize": 14,
+        "align": "MiddleRight",
+        "color": "0.85 0.7 0.2 1.0"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.55 0.03",
+        "anchormax": "0.95 0.09"
+      }
+    ]
+  }
+]

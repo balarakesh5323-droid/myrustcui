@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Shop_Dialog",
+    "parent": "Overlay",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Image",
+        "color": "0.06 0.07 0.09 0.96",
+        "sprite": "assets/content/ui/ui.background.tile.psd"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.15 0.1",
+        "anchormax": "0.85 0.9"
+      },
+      {
+        "type": "NeedsCursor"
+      }
+    ]
+  },
+  {
+    "name": "Shop_Title",
+    "parent": "Shop_Dialog",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Text",
+        "text": "<b>OUTPOST SHOP</b>",
+        "fontSize": 22,
+        "align": "MiddleCenter",
+        "color": "0.9 0.85 0.4 1"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.05 0.90",
+        "anchormax": "0.85 0.98"
+      }
+    ]
+  },
+  {
+    "name": "Shop_Item_AK47",
+    "parent": "Shop_Dialog",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Image",
+        "color": "0.12 0.14 0.18 0.9"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.05 0.50",
+        "anchormax": "0.32 0.85"
+      }
+    ]
+  },
+  {
+    "name": "Shop_Item_AK47_Icon",
+    "parent": "Shop_Item_AK47",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Image",
+        "itemid": 1545779598,
+        "color": "1 1 1 1"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.1 0.35",
+        "anchormax": "0.9 0.9"
+      }
+    ]
+  },
+  {
+    "name": "Shop_Item_AK47_BuyBtn",
+    "parent": "Shop_Item_AK47",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Button",
+        "command": "shop.buy rifle.ak",
+        "color": "0.2 0.65 0.3 0.9"
+      },
+      {
+        "type": "UnityEngine.UI.Text",
+        "text": "BUY (500 Scrap)",
+        "fontSize": 12,
+        "align": "MiddleCenter"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.05 0.05",
+        "anchormax": "0.95 0.28"
+      }
+    ]
+  }
+]

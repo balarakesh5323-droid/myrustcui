@@ -1,0 +1,21 @@
+{
+    "name": "RustCUIBuilder.Editor",
+    "rootNamespace": "RustCUIBuilder.Editor",
+    "references": [
+        "RustCUIBuilder.Runtime",
+        "Unity.TextMeshPro",
+        "Unity.ugui",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

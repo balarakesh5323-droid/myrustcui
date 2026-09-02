@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
+using UnityEngine;
+using RustCUIBuilder.Editor.Canvas.Tools;
 using RustCUIBuilder.Runtime.Core.Models;
 using RustCUIBuilder.Runtime.Discovery;
 using RustCUIBuilder.Runtime.Rendering.Canvas;
-using UnityEditor;
-using UnityEngine;
 
 namespace RustCUIBuilder.Editor.Canvas
 {
@@ -17,9 +18,9 @@ namespace RustCUIBuilder.Editor.Canvas
     }
 
     /// <summary>
-    /// Professional interactive visual 2D canvas editor for Rust CUI Builder.
-    /// Supports pan, zoom, grid, snapping, pixel rulers, coordinate tooltips,
-    /// in-game background preview, and visual bounding-box / anchor handle manipulation.
+    /// Master interactive 2D canvas viewport editor for Rust CUI Builder.
+    /// Integrates authoritative coordinates, modular tools (Select, Move, Resize, Rotate, Anchor, Pivot),
+    /// multi-element alignment/distribution, zoom-to-cursor, rulers, draggable guides, and debug HUD.
     /// </summary>
     public class CuiCanvasEditorView
     {
@@ -28,140 +29,182 @@ namespace RustCUIBuilder.Editor.Canvas
         private bool _isPanning;
         private Vector2 _lastMousePos;
 
-        public bool SnapToGrid { get; set; } = true;
-        public int GridSize { get; set; } = 16;
+        public CanvasGuideSystem GuideSystem { get; } = new CanvasGuideSystem();
+        public CanvasToolController ToolController { get; } = new CanvasToolController();
+
         public bool ShowRulers { get; set; } = true;
-        public bool ShowAnchors { get; set; } = true;
         public bool ShowGuides { get; set; } = true;
+        public bool ShowAnchors { get; set; } = true;
+        public bool ShowPivot { get; set; } = true;
         public CanvasBackgroundMode BackgroundMode { get; set; } = CanvasBackgroundMode.DarkGrid;
 
         public RustResolutionPreset CurrentPreset { get; set; } = RustResolutionPreset.Presets[3]; // 1920x1080 default
 
-        private string _draggingElementId;
-        private DragHandleType _currentDragHandle = DragHandleType.None;
-        private Vector2 _dragStartMousePos;
-        private Vector2 _dragStartOffsetMin;
-        private Vector2 _dragStartOffsetMax;
+        private int _canvasControlId;
+        private string _hoveredElementName = "";
 
-        private enum DragHandleType
+        public void Draw(Rect viewRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo = null)
         {
-            None,
-            Body,
-            TopLeft,
-            TopRight,
-            BottomLeft,
-            BottomRight,
-            AnchorMin,
-            AnchorMax
-        }
+            _canvasControlId = GUIUtility.GetControlID(FocusType.Keyboard);
 
-        public void Draw(Rect viewRect, CuiDocument doc, Action onModified)
-        {
-            // Dark viewport background
-            EditorGUI.DrawRect(viewRect, new Color(0.11f, 0.12f, 0.14f, 1f));
+            // Dark canvas workspace background
+            EditorGUI.DrawRect(viewRect, new Color(0.10f, 0.11f, 0.13f, 1f));
 
-            HandleInput(viewRect, doc, onModified);
+            var coords = RustCanvasCoordinates.Instance;
+            float canvasW = CurrentPreset.Width;
+            float canvasH = CurrentPreset.Height;
 
-            // Calculate simulated screen rectangle
-            float screenW = CurrentPreset.Width * _zoom;
-            float screenH = CurrentPreset.Height * _zoom;
-            var screenRect = new Rect(viewRect.x + _panOffset.x, viewRect.y + _panOffset.y, screenW, screenH);
+            // Handle Input & Dispatch to Tools
+            HandleCanvasInput(viewRect, doc, onModified, onCommitUndo, canvasW, canvasH);
 
-            // Draw Rust Game Screen Frame & In-game Background
+            // Calculate simulated screen frame
+            var screenRect = coords.CanvasToScreen(new Rect(0, 0, canvasW, canvasH), viewRect, _panOffset, _zoom);
+
+            // 1. Draw Rust Game Screen Frame & Background
             DrawScreenFrame(screenRect);
 
-            // Draw Grid inside screen bounds
+            // 2. Draw Grid inside screen bounds
             if (BackgroundMode == CanvasBackgroundMode.DarkGrid)
             {
                 DrawGrid(screenRect);
             }
 
-            // Draw Elements from Document (sorted root first)
+            // 3. Draw Elements (sorted root first)
             if (doc != null && doc.Elements != null)
             {
                 foreach (var elem in doc.Elements)
                 {
-                    DrawElement(screenRect, elem, doc, onModified);
+                    DrawElement(screenRect, elem, doc, viewRect, canvasW, canvasH);
                 }
             }
 
-            // Draw Rulers
-            if (ShowRulers)
+            // 4. Draw Active Tool Overlay (Marquee, Handles, Anchors, Pivot, etc.)
+            ToolController.DrawToolOverlay(viewRect, _panOffset, _zoom, canvasW, canvasH, doc);
+
+            // 5. Draw Draggable Guides
+            if (ShowGuides)
             {
-                DrawRulers(viewRect, screenRect);
+                DrawGuides(viewRect, screenRect, canvasW, canvasH);
             }
 
-            // Draw Canvas Controls Overlay (Bottom Right)
-            DrawCanvasToolbar(viewRect);
+            // 6. Draw Rulers
+            if (ShowRulers)
+            {
+                DrawRulers(viewRect, screenRect, canvasW, canvasH);
+            }
+
+            // 7. Draw Top Tool Selector Bar
+            DrawTopToolbar(viewRect, doc, onModified, onCommitUndo, canvasW, canvasH);
+
+            // 8. Draw Bottom Right Canvas Controls (Zoom / Snap / BG)
+            DrawBottomToolbar(viewRect, doc);
+
+            // 9. Draw Debug HUD (if enabled)
+            var mouseScreen = Event.current.mousePosition;
+            var mouseCanvas = coords.ScreenToCanvas(mouseScreen, viewRect, _panOffset, _zoom);
+            var mouseRust = coords.CanvasToRust(mouseCanvas, canvasW, canvasH);
+            CanvasDebugOverlay.DrawDebugHUD(
+                viewRect,
+                mouseScreen,
+                mouseCanvas,
+                mouseRust,
+                ToolController.ActiveTool?.ToolName ?? "None",
+                _hoveredElementName,
+                doc?.SelectedIds.Count ?? 0,
+                _canvasControlId,
+                Event.current.type,
+                _zoom,
+                _panOffset
+            );
         }
 
-        private void HandleInput(Rect viewRect, CuiDocument doc, Action onModified)
+        private void HandleCanvasInput(Rect viewRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, float canvasW, float canvasH)
         {
             var e = Event.current;
             if (!viewRect.Contains(e.mousePosition)) return;
+
+            // Track hovered element for tooltips & debug
+            var hit = CanvasHitTester.HitTestElements(e.mousePosition, doc, viewRect, _panOffset, _zoom, canvasW, canvasH);
+            _hoveredElementName = hit != null ? hit.Name : "";
 
             // Pan: Middle mouse button or Alt + Left click
             if (e.type == EventType.MouseDown && (e.button == 2 || (e.button == 0 && e.alt)))
             {
                 _isPanning = true;
                 _lastMousePos = e.mousePosition;
+                GUIUtility.keyboardControl = _canvasControlId;
                 e.Use();
+                return;
             }
-            else if (e.type == EventType.MouseDrag && _isPanning)
+            if (e.type == EventType.MouseDrag && _isPanning)
             {
                 _panOffset += e.mousePosition - _lastMousePos;
                 _lastMousePos = e.mousePosition;
                 e.Use();
+                return;
             }
-            else if (e.type == EventType.MouseUp && _isPanning)
+            if (e.type == EventType.MouseUp && _isPanning)
             {
                 _isPanning = false;
                 e.Use();
+                return;
             }
 
-            // Zoom: Scroll wheel
+            // Zoom-to-Cursor: Mouse wheel
             if (e.type == EventType.ScrollWheel)
             {
                 float zoomDelta = -e.delta.y * 0.04f;
                 float oldZoom = _zoom;
-                _zoom = Mathf.Clamp(_zoom + zoomDelta, 0.15f, 3.0f);
+                _zoom = Mathf.Clamp(_zoom + zoomDelta, 0.15f, 4.0f);
 
-                // Zoom toward mouse position
+                // Invariant: mouse cursor remains on the same canvas coordinate
                 var mouseRel = e.mousePosition - (viewRect.position + _panOffset);
                 _panOffset -= mouseRel * (_zoom / oldZoom - 1f);
 
                 e.Use();
+                return;
             }
 
-            // Drag handling release
-            if (e.type == EventType.MouseUp && _draggingElementId != null)
+            // Keyboard Shortcuts (Delete, Duplicate, Nudge)
+            if (e.type == EventType.KeyDown)
             {
-                _draggingElementId = null;
-                _currentDragHandle = DragHandleType.None;
-                onModified?.Invoke();
-                e.Use();
+                if (e.keyCode == KeyCode.Delete || e.keyCode == KeyCode.Backspace)
+                {
+                    DeleteSelected(doc, onModified, onCommitUndo);
+                    e.Use();
+                    return;
+                }
+                if (e.control && e.keyCode == KeyCode.D)
+                {
+                    DuplicateSelected(doc, onModified, onCommitUndo);
+                    e.Use();
+                    return;
+                }
+                if (e.control && e.keyCode == KeyCode.A)
+                {
+                    doc.SelectAll();
+                    e.Use();
+                    return;
+                }
+
+                // Arrow keys nudge position
+                if (e.keyCode == KeyCode.LeftArrow || e.keyCode == KeyCode.RightArrow || e.keyCode == KeyCode.UpArrow || e.keyCode == KeyCode.DownArrow)
+                {
+                    float step = e.shift ? 10f : (GuideSystem.SnapToGrid ? GuideSystem.GridSize : 1f);
+                    Vector2 delta = Vector2.zero;
+                    if (e.keyCode == KeyCode.LeftArrow) delta.x = -step;
+                    if (e.keyCode == KeyCode.RightArrow) delta.x = step;
+                    if (e.keyCode == KeyCode.UpArrow) delta.y = step;
+                    if (e.keyCode == KeyCode.DownArrow) delta.y = -step;
+
+                    NudgeSelected(doc, delta, onModified, onCommitUndo);
+                    e.Use();
+                    return;
+                }
             }
-        }
 
-        private void DrawGrid(Rect screenRect)
-        {
-            Handles.BeginGUI();
-            Color gridColor = new Color(0.22f, 0.24f, 0.28f, 0.35f);
-            float step = GridSize * _zoom;
-            if (step < 6f) step *= 4f;
-
-            Handles.color = gridColor;
-
-            for (float x = screenRect.x; x <= screenRect.xMax; x += step)
-            {
-                Handles.DrawLine(new Vector3(x, screenRect.y, 0), new Vector3(x, screenRect.yMax, 0));
-            }
-            for (float y = screenRect.y; y <= screenRect.yMax; y += step)
-            {
-                Handles.DrawLine(new Vector3(screenRect.x, y, 0), new Vector3(screenRect.xMax, y, 0));
-            }
-
-            Handles.EndGUI();
+            // Dispatch to Active Tool
+            ToolController.ProcessEvent(e, viewRect, _panOffset, _zoom, canvasW, canvasH, doc, GuideSystem, onModified, onCommitUndo);
         }
 
         private void DrawScreenFrame(Rect screenRect)
@@ -170,13 +213,13 @@ namespace RustCUIBuilder.Editor.Canvas
             {
                 var bg = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/RustCUIBuilder/Resources/Backgrounds/RustBackground1.jpg");
                 if (bg != null) GUI.DrawTexture(screenRect, bg, ScaleMode.ScaleAndCrop);
-                else EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.95f));
+                else EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.98f));
             }
             else if (BackgroundMode == CanvasBackgroundMode.RustInGame2)
             {
                 var bg = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/RustCUIBuilder/Resources/Backgrounds/RustBackground2.jpg");
                 if (bg != null) GUI.DrawTexture(screenRect, bg, ScaleMode.ScaleAndCrop);
-                else EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.95f));
+                else EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.98f));
             }
             else
             {
@@ -204,37 +247,33 @@ namespace RustCUIBuilder.Editor.Canvas
             GUI.Label(new Rect(screenRect.x + 8, screenRect.y + 6, 320, 18), $"{CurrentPreset.Name} ({CurrentPreset.Width}x{CurrentPreset.Height})", labelStyle);
         }
 
-        public static Rect ComputeElementRect(CuiElementNode elem, CuiDocument doc, Rect screenRect, float zoom)
+        private void DrawGrid(Rect screenRect)
         {
-            if (elem == null) return screenRect;
+            Handles.BeginGUI();
+            Color gridColor = new Color(0.22f, 0.24f, 0.28f, 0.35f);
+            float step = GuideSystem.GridSize * _zoom;
+            if (step < 6f) step *= 4f;
 
-            Rect parentRect = screenRect;
-            if (!string.IsNullOrEmpty(elem.Parent) && Array.IndexOf(RustAssetDiscovery.VerifiedLayers, elem.Parent) < 0)
+            Handles.color = gridColor;
+
+            for (float x = screenRect.x; x <= screenRect.xMax; x += step)
             {
-                var parentElem = doc.FindByName(elem.Parent);
-                if (parentElem != null && parentElem != elem)
-                {
-                    parentRect = ComputeElementRect(parentElem, doc, screenRect, zoom);
-                }
+                Handles.DrawLine(new Vector3(x, screenRect.y, 0), new Vector3(x, screenRect.yMax, 0));
+            }
+            for (float y = screenRect.y; y <= screenRect.yMax; y += step)
+            {
+                Handles.DrawLine(new Vector3(screenRect.x, y, 0), new Vector3(screenRect.xMax, y, 0));
             }
 
-            var rectComp = elem.GetComponent<CuiRectTransformComponent>() ?? new CuiRectTransformComponent();
-            Vector2 anchorMin = RustCanvasScaler.ParseVector2(rectComp.AnchorMin, Vector2.zero);
-            Vector2 anchorMax = RustCanvasScaler.ParseVector2(rectComp.AnchorMax, Vector2.one);
-            Vector2 offsetMin = RustCanvasScaler.ParseVector2(rectComp.OffsetMin, Vector2.zero);
-            Vector2 offsetMax = RustCanvasScaler.ParseVector2(rectComp.OffsetMax, Vector2.zero);
-
-            float xMin = parentRect.x + parentRect.width * anchorMin.x + offsetMin.x * zoom;
-            float xMax = parentRect.x + parentRect.width * anchorMax.x + offsetMax.x * zoom;
-            float yMin = parentRect.y + parentRect.height * (1f - anchorMax.y) - offsetMax.y * zoom;
-            float yMax = parentRect.y + parentRect.height * (1f - anchorMin.y) - offsetMin.y * zoom;
-
-            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+            Handles.EndGUI();
         }
 
-        private void DrawElement(Rect screenRect, CuiElementNode elem, CuiDocument doc, Action onModified)
+        private void DrawElement(Rect screenRect, CuiElementNode elem, CuiDocument doc, Rect viewRect, float canvasW, float canvasH)
         {
-            var elemScreenRect = ComputeElementRect(elem, doc, screenRect, _zoom);
+            if (elem.IsHidden) return;
+
+            var coords = RustCanvasCoordinates.Instance;
+            var elemScreenRect = coords.GetElementScreenRect(elem, doc, viewRect, _panOffset, _zoom, canvasW, canvasH);
 
             // Element Graphics
             var img = elem.GetComponent<CuiImageComponent>();
@@ -295,17 +334,11 @@ namespace RustCUIBuilder.Editor.Canvas
                 GUI.Label(elemScreenRect, text.Text, textStyle);
             }
 
-            // Selection Outline and Gizmos
+            // Selection Outline
             if (elem.IsSelected)
             {
-                var rectComp = elem.GetComponent<CuiRectTransformComponent>() ?? new CuiRectTransformComponent();
-                DrawSelectedGizmo(elemScreenRect, elem, rectComp, onModified);
-            }
-            else
-            {
-                // Subtle boundary
                 Handles.BeginGUI();
-                Handles.color = new Color(0.35f, 0.45f, 0.55f, 0.25f);
+                Handles.color = new Color(0.2f, 0.75f, 1.0f, 0.95f); // Cyan selection
                 Handles.DrawPolyLine(
                     new Vector3(elemScreenRect.xMin, elemScreenRect.yMin, 0),
                     new Vector3(elemScreenRect.xMax, elemScreenRect.yMin, 0),
@@ -315,93 +348,54 @@ namespace RustCUIBuilder.Editor.Canvas
                 );
                 Handles.EndGUI();
             }
-
-            // Click selection
-            var e = Event.current;
-            if (e.type == EventType.MouseDown && e.button == 0 && !e.alt && elemScreenRect.Contains(e.mousePosition))
+            else
             {
-                doc.Select(elem.Id, e.shift || e.control);
-                _draggingElementId = elem.Id;
-                _currentDragHandle = DragHandleType.Body;
-                _dragStartMousePos = e.mousePosition;
-
-                var rectComp = elem.GetComponent<CuiRectTransformComponent>();
-                if (rectComp != null)
-                {
-                    _dragStartOffsetMin = RustCanvasScaler.ParseVector2(rectComp.OffsetMin, Vector2.zero);
-                    _dragStartOffsetMax = RustCanvasScaler.ParseVector2(rectComp.OffsetMax, Vector2.zero);
-                }
-                e.Use();
+                // Subtle boundary
+                Handles.BeginGUI();
+                Handles.color = new Color(0.35f, 0.45f, 0.55f, 0.2f);
+                Handles.DrawPolyLine(
+                    new Vector3(elemScreenRect.xMin, elemScreenRect.yMin, 0),
+                    new Vector3(elemScreenRect.xMax, elemScreenRect.yMin, 0),
+                    new Vector3(elemScreenRect.xMax, elemScreenRect.yMax, 0),
+                    new Vector3(elemScreenRect.xMin, elemScreenRect.yMax, 0),
+                    new Vector3(elemScreenRect.xMin, elemScreenRect.yMin, 0)
+                );
+                Handles.EndGUI();
             }
         }
 
-        private void DrawSelectedGizmo(Rect elemScreenRect, CuiElementNode elem, CuiRectTransformComponent rect, Action onModified)
+        private void DrawGuides(Rect viewRect, Rect screenRect, float canvasW, float canvasH)
         {
+            var coords = RustCanvasCoordinates.Instance;
             Handles.BeginGUI();
-            Handles.color = new Color(0.2f, 0.75f, 1.0f, 0.95f); // Cyan selection
+            Handles.color = new Color(0.3f, 0.85f, 1.0f, 0.75f); // Cyan guides
 
-            // Thick boundary
-            Handles.DrawPolyLine(
-                new Vector3(elemScreenRect.xMin, elemScreenRect.yMin, 0),
-                new Vector3(elemScreenRect.xMax, elemScreenRect.yMin, 0),
-                new Vector3(elemScreenRect.xMax, elemScreenRect.yMax, 0),
-                new Vector3(elemScreenRect.xMin, elemScreenRect.yMax, 0),
-                new Vector3(elemScreenRect.xMin, elemScreenRect.yMin, 0)
-            );
-
-            // Corner Handles
-            float handleSize = 6f;
-            EditorGUI.DrawRect(new Rect(elemScreenRect.xMin - handleSize / 2, elemScreenRect.yMin - handleSize / 2, handleSize, handleSize), Color.cyan);
-            EditorGUI.DrawRect(new Rect(elemScreenRect.xMax - handleSize / 2, elemScreenRect.yMin - handleSize / 2, handleSize, handleSize), Color.cyan);
-            EditorGUI.DrawRect(new Rect(elemScreenRect.xMin - handleSize / 2, elemScreenRect.yMax - handleSize / 2, handleSize, handleSize), Color.cyan);
-            EditorGUI.DrawRect(new Rect(elemScreenRect.xMax - handleSize / 2, elemScreenRect.yMax - handleSize / 2, handleSize, handleSize), Color.cyan);
-
-            Handles.EndGUI();
-
-            // Dragging Body Movement
-            var e = Event.current;
-            if (_draggingElementId == elem.Id && _currentDragHandle == DragHandleType.Body && e.type == EventType.MouseDrag)
+            foreach (var g in GuideSystem.Guides)
             {
-                var delta = (e.mousePosition - _dragStartMousePos) / _zoom;
-                if (SnapToGrid)
+                if (g.Orientation == GuideOrientation.Vertical)
                 {
-                    delta.x = Mathf.Round(delta.x / GridSize) * GridSize;
-                    delta.y = Mathf.Round(delta.y / GridSize) * GridSize;
+                    float screenX = coords.CanvasToScreen(new Vector2(g.CanvasPosition, 0), viewRect, _panOffset, _zoom).x;
+                    Handles.DrawLine(new Vector3(screenX, viewRect.y, 0), new Vector3(screenX, viewRect.yMax, 0));
                 }
-
-                var newOffsetMin = new Vector2(_dragStartOffsetMin.x + delta.x, _dragStartOffsetMin.y - delta.y);
-                var newOffsetMax = new Vector2(_dragStartOffsetMax.x + delta.x, _dragStartOffsetMax.y - delta.y);
-
-                rect.OffsetMin = RustCanvasScaler.FormatVector2(newOffsetMin, "0.#");
-                rect.OffsetMax = RustCanvasScaler.FormatVector2(newOffsetMax, "0.#");
-
-                onModified?.Invoke();
-                e.Use();
+                else
+                {
+                    float screenY = coords.CanvasToScreen(new Vector2(0, g.CanvasPosition), viewRect, _panOffset, _zoom).y;
+                    Handles.DrawLine(new Vector3(viewRect.x, screenY, 0), new Vector3(viewRect.xMax, screenY, 0));
+                }
             }
-
-            // Measurement Tooltip
-            float realW = elemScreenRect.width / _zoom;
-            float realH = elemScreenRect.height / _zoom;
-            string dimText = $"<b>{elem.Name}</b> | W: {realW:0}px  H: {realH:0}px";
-            var tipStyle = new GUIStyle(EditorStyles.helpBox)
-            {
-                fontSize = 10,
-                richText = true,
-                normal = { textColor = Color.white }
-            };
-            GUI.Label(new Rect(elemScreenRect.x, elemScreenRect.y - 22, 220, 20), dimText, tipStyle);
+            Handles.EndGUI();
         }
 
-        private void DrawRulers(Rect viewRect, Rect screenRect)
+        private void DrawRulers(Rect viewRect, Rect screenRect, float canvasW, float canvasH)
         {
             float rulerThickness = 18f;
             var topRulerRect = new Rect(viewRect.x + rulerThickness, viewRect.y, viewRect.width - rulerThickness, rulerThickness);
             var leftRulerRect = new Rect(viewRect.x, viewRect.y + rulerThickness, rulerThickness, viewRect.height - rulerThickness);
             var cornerRect = new Rect(viewRect.x, viewRect.y, rulerThickness, rulerThickness);
 
-            EditorGUI.DrawRect(topRulerRect, new Color(0.16f, 0.17f, 0.20f, 0.95f));
-            EditorGUI.DrawRect(leftRulerRect, new Color(0.16f, 0.17f, 0.20f, 0.95f));
-            EditorGUI.DrawRect(cornerRect, new Color(0.13f, 0.14f, 0.16f, 1f));
+            EditorGUI.DrawRect(topRulerRect, new Color(0.14f, 0.15f, 0.18f, 0.95f));
+            EditorGUI.DrawRect(leftRulerRect, new Color(0.14f, 0.15f, 0.18f, 0.95f));
+            EditorGUI.DrawRect(cornerRect, new Color(0.12f, 0.13f, 0.15f, 1f));
 
             var rulerStyle = new GUIStyle(EditorStyles.miniLabel)
             {
@@ -413,7 +407,7 @@ namespace RustCUIBuilder.Editor.Canvas
             Handles.color = new Color(0.3f, 0.32f, 0.36f, 0.7f);
 
             // Top Ruler Marks
-            for (float px = 0; px <= CurrentPreset.Width; px += 100)
+            for (float px = 0; px <= canvasW; px += 100)
             {
                 float x = screenRect.x + px * _zoom;
                 if (x >= topRulerRect.x && x <= topRulerRect.xMax)
@@ -424,7 +418,7 @@ namespace RustCUIBuilder.Editor.Canvas
             }
 
             // Left Ruler Marks
-            for (float py = 0; py <= CurrentPreset.Height; py += 100)
+            for (float py = 0; py <= canvasH; py += 100)
             {
                 float y = screenRect.y + py * _zoom;
                 if (y >= leftRulerRect.y && y <= leftRulerRect.yMax)
@@ -437,31 +431,183 @@ namespace RustCUIBuilder.Editor.Canvas
             Handles.EndGUI();
         }
 
-        private void DrawCanvasToolbar(Rect viewRect)
+        private void DrawTopToolbar(Rect viewRect, CuiDocument doc, Action onModified, Action<string> onCommitUndo, float canvasW, float canvasH)
         {
-            var barRect = new Rect(viewRect.xMax - 430, viewRect.yMax - 30, 420, 24);
-            EditorGUI.DrawRect(barRect, new Color(0.13f, 0.14f, 0.16f, 0.92f));
+            var barRect = new Rect(viewRect.x + 24, viewRect.y + 2, viewRect.width - 48, 22);
+            GUILayout.BeginArea(barRect);
+            EditorGUILayout.BeginHorizontal();
+
+            // Tools Segment
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Select, "Select (Q)", EditorStyles.toolbarButton, GUILayout.Width(70)))
+                ToolController.ActiveMode = CanvasToolMode.Select;
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Move, "Move (W)", EditorStyles.toolbarButton, GUILayout.Width(65)))
+                ToolController.ActiveMode = CanvasToolMode.Move;
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Rotate, "Rotate (E)", EditorStyles.toolbarButton, GUILayout.Width(68)))
+                ToolController.ActiveMode = CanvasToolMode.Rotate;
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Resize, "Resize (R)", EditorStyles.toolbarButton, GUILayout.Width(68)))
+                ToolController.ActiveMode = CanvasToolMode.Resize;
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Anchor, "Anchors (T)", EditorStyles.toolbarButton, GUILayout.Width(76)))
+                ToolController.ActiveMode = CanvasToolMode.Anchor;
+            if (GUILayout.Toggle(ToolController.ActiveMode == CanvasToolMode.Pivot, "Pivot (Y)", EditorStyles.toolbarButton, GUILayout.Width(64)))
+                ToolController.ActiveMode = CanvasToolMode.Pivot;
+
+            GUILayout.Space(12);
+
+            // Alignment Tools (Enabled when 2+ elements selected)
+            var selected = doc?.SelectedElements;
+            GUI.enabled = selected != null && selected.Count >= 2;
+
+            if (GUILayout.Button("⇤ Left", EditorStyles.toolbarButton, GUILayout.Width(46)))
+            {
+                CanvasAlignmentEngine.AlignLeft(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Align Left");
+                onModified?.Invoke();
+            }
+            if (GUILayout.Button("⇥ Right", EditorStyles.toolbarButton, GUILayout.Width(52)))
+            {
+                CanvasAlignmentEngine.AlignRight(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Align Right");
+                onModified?.Invoke();
+            }
+            if (GUILayout.Button("⤒ Top", EditorStyles.toolbarButton, GUILayout.Width(46)))
+            {
+                CanvasAlignmentEngine.AlignTop(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Align Top");
+                onModified?.Invoke();
+            }
+            if (GUILayout.Button("⤓ Bottom", EditorStyles.toolbarButton, GUILayout.Width(60)))
+            {
+                CanvasAlignmentEngine.AlignBottom(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Align Bottom");
+                onModified?.Invoke();
+            }
+            if (GUILayout.Button("═ Center", EditorStyles.toolbarButton, GUILayout.Width(58)))
+            {
+                CanvasAlignmentEngine.AlignCenter(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Align Center");
+                onModified?.Invoke();
+            }
+
+            GUI.enabled = selected != null && selected.Count >= 3;
+            if (GUILayout.Button("||| Dist H", EditorStyles.toolbarButton, GUILayout.Width(56)))
+            {
+                CanvasAlignmentEngine.DistributeHorizontally(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Distribute Horizontally");
+                onModified?.Invoke();
+            }
+            if (GUILayout.Button("≡ Dist V", EditorStyles.toolbarButton, GUILayout.Width(56)))
+            {
+                CanvasAlignmentEngine.DistributeVertically(selected, doc, canvasW, canvasH);
+                onCommitUndo?.Invoke("Distribute Vertically");
+                onModified?.Invoke();
+            }
+            GUI.enabled = true;
+
+            GUILayout.FlexibleSpace();
+
+            // Debug Overlay Toggle
+            CanvasDebugOverlay.IsEnabled = GUILayout.Toggle(CanvasDebugOverlay.IsEnabled, "Debug HUD", EditorStyles.toolbarButton, GUILayout.Width(75));
+
+            EditorGUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
+
+        private void DrawBottomToolbar(Rect viewRect, CuiDocument doc)
+        {
+            var barRect = new Rect(viewRect.xMax - 470, viewRect.yMax - 26, 460, 22);
+            EditorGUI.DrawRect(barRect, new Color(0.12f, 0.13f, 0.15f, 0.95f));
 
             GUILayout.BeginArea(barRect);
             EditorGUILayout.BeginHorizontal();
 
             GUILayout.Label($"Zoom: {Mathf.RoundToInt(_zoom * 100)}%", EditorStyles.miniLabel, GUILayout.Width(62));
-            _zoom = GUILayout.HorizontalSlider(_zoom, 0.2f, 2.0f, GUILayout.Width(65));
+            _zoom = GUILayout.HorizontalSlider(_zoom, 0.2f, 2.5f, GUILayout.Width(60));
 
+            // Zoom Presets
             if (GUILayout.Button("Fit", EditorStyles.miniButton, GUILayout.Width(28)))
             {
-                _zoom = 0.55f;
-                _panOffset = new Vector2(60, 40);
+                FitCanvas(viewRect);
+            }
+            if (GUILayout.Button("100%", EditorStyles.miniButton, GUILayout.Width(38)))
+            {
+                _zoom = 1.0f;
             }
 
-            SnapToGrid = GUILayout.Toggle(SnapToGrid, "Snap", EditorStyles.miniButton, GUILayout.Width(42));
+            GuideSystem.SnapToGrid = GUILayout.Toggle(GuideSystem.SnapToGrid, "Snap", EditorStyles.miniButton, GUILayout.Width(42));
             ShowRulers = GUILayout.Toggle(ShowRulers, "Rulers", EditorStyles.miniButton, GUILayout.Width(46));
+            ShowGuides = GUILayout.Toggle(ShowGuides, "Guides", EditorStyles.miniButton, GUILayout.Width(46));
 
             // Background Mode
-            BackgroundMode = (CanvasBackgroundMode)EditorGUILayout.EnumPopup(BackgroundMode, EditorStyles.miniButton, GUILayout.Width(95));
+            BackgroundMode = (CanvasBackgroundMode)EditorGUILayout.EnumPopup(BackgroundMode, EditorStyles.miniButton, GUILayout.Width(88));
 
             EditorGUILayout.EndHorizontal();
             GUILayout.EndArea();
+        }
+
+        public void FitCanvas(Rect viewRect)
+        {
+            float targetZoomW = (viewRect.width - 80f) / CurrentPreset.Width;
+            float targetZoomH = (viewRect.height - 80f) / CurrentPreset.Height;
+            _zoom = Mathf.Clamp(Mathf.Min(targetZoomW, targetZoomH), 0.2f, 2.0f);
+
+            float screenW = CurrentPreset.Width * _zoom;
+            float screenH = CurrentPreset.Height * _zoom;
+            _panOffset = new Vector2((viewRect.width - screenW) / 2f, (viewRect.height - screenH) / 2f);
+        }
+
+        private void DeleteSelected(CuiDocument doc, Action onModified, Action<string> onCommitUndo)
+        {
+            var selected = doc?.SelectedElements;
+            if (selected == null || selected.Count == 0) return;
+
+            foreach (var s in selected)
+            {
+                if (!s.IsLocked) doc.RemoveElement(s.Id);
+            }
+            onCommitUndo?.Invoke("Delete Element(s)");
+            onModified?.Invoke();
+        }
+
+        private void DuplicateSelected(CuiDocument doc, Action onModified, Action<string> onCommitUndo)
+        {
+            var selected = doc?.SelectedElements;
+            if (selected == null || selected.Count == 0) return;
+
+            var newSelectedIds = new List<string>();
+            foreach (var s in selected)
+            {
+                var clone = s.Clone(true, $"{s.Name}_Copy");
+                doc.AddElement(clone);
+                newSelectedIds.Add(clone.Id);
+            }
+
+            doc.ClearSelection();
+            foreach (var id in newSelectedIds) doc.Select(id, true);
+
+            onCommitUndo?.Invoke("Duplicate Element(s)");
+            onModified?.Invoke();
+        }
+
+        private void NudgeSelected(CuiDocument doc, Vector2 delta, Action onModified, Action<string> onCommitUndo)
+        {
+            var selected = doc?.SelectedElements;
+            if (selected == null || selected.Count == 0) return;
+
+            foreach (var s in selected)
+            {
+                if (s.IsLocked) continue;
+                var r = s.GetComponent<CuiRectTransformComponent>();
+                if (r == null) continue;
+
+                var min = RustCanvasScaler.ParseVector2(r.OffsetMin, Vector2.zero);
+                var max = RustCanvasScaler.ParseVector2(r.OffsetMax, Vector2.zero);
+
+                r.OffsetMin = RustCanvasScaler.FormatVector2(min + delta, "0.#");
+                r.OffsetMax = RustCanvasScaler.FormatVector2(max + delta, "0.#");
+            }
+
+            onCommitUndo?.Invoke("Nudge Element(s)");
+            onModified?.Invoke();
         }
     }
 }

@@ -287,7 +287,7 @@ namespace RustCUIBuilder.Editor.Windows
 
             // 2. Center Column (Canvas Visual Editor)
             var canvasRect = new Rect(leftPanelWidth, 20, centerWidth, totalHeight);
-            _canvasView.Draw(canvasRect, _document, () => { RecordSnapshot("Canvas Drag/Resize"); OnDocumentModified(); });
+            _canvasView.Draw(canvasRect, _document, () => OnDocumentModified(), (action) => { RecordSnapshot(action); OnDocumentModified(); });
 
             if (_diffOverlayView.IsEnabled)
             {

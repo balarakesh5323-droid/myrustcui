@@ -1,0 +1,214 @@
+{
+  "FormatVersion": 1,
+  "ProjectName": "CanvasToolQA",
+  "Author": "QA Engineer",
+  "RustProtocol": "2632.287.1",
+  "CreatedAt": "2026-09-03T00:00:00Z",
+  "ModifiedAt": "2026-09-03T00:00:00Z",
+  "Elements": [
+    {
+      "Id": "qa_root_panel",
+      "Name": "Panel",
+      "Parent": "Overlay",
+      "IsLocked": false,
+      "IsHidden": false,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.1 0.1",
+          "AnchorMax": "0.4 0.4",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Image",
+          "Color": "0.15 0.2 0.28 0.95",
+          "Sprite": "assets/content/ui/ui.background.tile.psd"
+        }
+      ]
+    },
+    {
+      "Id": "qa_button",
+      "Name": "Button",
+      "Parent": "Overlay",
+      "IsLocked": false,
+      "IsHidden": false,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.45 0.1",
+          "AnchorMax": "0.65 0.2",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Button",
+          "Color": "0.2 0.7 0.35 1.0",
+          "Command": "qa.test.button"
+        },
+        {
+          "Type": "UnityEngine.UI.Text",
+          "Text": "Click QA Button",
+          "FontSize": 14,
+          "Align": 4
+        }
+      ]
+    },
+    {
+      "Id": "qa_label",
+      "Name": "Label",
+      "Parent": "Overlay",
+      "IsLocked": false,
+      "IsHidden": false,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.45 0.25",
+          "AnchorMax": "0.65 0.35",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Text",
+          "Text": "Interactive QA Label",
+          "FontSize": 16,
+          "Color": "1 1 0.2 1",
+          "Align": 3
+        }
+      ]
+    },
+    {
+      "Id": "qa_image",
+      "Name": "Image",
+      "Parent": "Overlay",
+      "IsLocked": false,
+      "IsHidden": false,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.7 0.1",
+          "AnchorMax": "0.9 0.4",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Image",
+          "Sprite": "assets/icons/check.png",
+          "Color": "0.3 0.9 0.4 1"
+        }
+      ]
+    },
+    {
+      "Id": "qa_nested_panel",
+      "Name": "NestedPanel",
+      "Parent": "Overlay",
+      "IsLocked": false,
+      "IsHidden": false,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.1 0.5",
+          "AnchorMax": "0.5 0.9",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Image",
+          "Color": "0.12 0.13 0.16 0.98",
+          "Sprite": "assets/content/ui/ui.background.tile.psd"
+        }
+      ]
+    },
+    {
+      "Id": "qa_child_button",
+      "Name": "ChildButton",
+      "Parent": "NestedPanel",
+      "IsLocked": false,
+      "IsHidden": false,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.1 0.1",
+          "AnchorMax": "0.9 0.4",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Button",
+          "Color": "0.8 0.3 0.2 1",
+          "Command": "qa.child.action"
+        },
+        {
+          "Type": "UnityEngine.UI.Text",
+          "Text": "Child Button",
+          "FontSize": 14,
+          "Align": 4
+        }
+      ]
+    },
+    {
+      "Id": "qa_child_label",
+      "Name": "ChildLabel",
+      "Parent": "NestedPanel",
+      "IsLocked": false,
+      "IsHidden": false,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.1 0.6",
+          "AnchorMax": "0.9 0.9",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Text",
+          "Text": "Child Label inside Nested Panel",
+          "FontSize": 14,
+          "Color": "1 1 1 1",
+          "Align": 4
+        }
+      ]
+    },
+    {
+      "Id": "qa_locked_elem",
+      "Name": "LockedElement",
+      "Parent": "Overlay",
+      "IsLocked": true,
+      "IsHidden": false,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.55 0.5",
+          "AnchorMax": "0.75 0.7",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Image",
+          "Color": "0.6 0.3 0.1 0.8"
+        }
+      ]
+    },
+    {
+      "Id": "qa_hidden_elem",
+      "Name": "HiddenElement",
+      "Parent": "Overlay",
+      "IsLocked": false,
+      "IsHidden": true,
+      "Components": [
+        {
+          "Type": "RectTransform",
+          "AnchorMin": "0.8 0.5",
+          "AnchorMax": "0.95 0.7",
+          "OffsetMin": "0 0",
+          "OffsetMax": "0 0"
+        },
+        {
+          "Type": "UnityEngine.UI.Image",
+          "Color": "0.1 0.5 0.8 0.8"
+        }
+      ]
+    }
+  ],
+  "Snapshots": []
+}

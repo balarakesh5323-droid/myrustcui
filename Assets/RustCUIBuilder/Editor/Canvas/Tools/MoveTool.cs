@@ -46,7 +46,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
                 var hitElem = CanvasHitTester.HitTestElements(currentEvent.mousePosition, doc, viewportRect, pan, zoom, canvasWidth, canvasHeight);
                 if (hitElem != null && !hitElem.IsLocked)
                 {
-                    if (!doc.SelectedIds.Contains(hitElem.Id))
+                    if (!doc.IsSelected(hitElem.Id))
                     {
                         if (!currentEvent.shift && !currentEvent.control) doc.Select(hitElem.Id, false);
                         else doc.Select(hitElem.Id, true);

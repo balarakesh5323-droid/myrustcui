@@ -107,7 +107,7 @@ namespace RustCUIBuilder.Editor.Hierarchy
                 return;
             }
 
-            bool isSelected = doc.SelectedIds.Contains(elem.Id);
+            bool isSelected = doc.IsSelected(elem.Id);
 
             var rowRect = EditorGUILayout.BeginHorizontal();
             if (isSelected)

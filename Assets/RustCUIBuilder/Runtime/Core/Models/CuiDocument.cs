@@ -39,6 +39,8 @@ namespace RustCUIBuilder.Runtime.Core.Models
 
         public List<CuiElementNode> SelectedElements => _selectedIds.Select(FindById).Where(e => e != null).ToList();
 
+        public bool IsSelected(string id) => !string.IsNullOrEmpty(id) && _selectedIds.Contains(id);
+
         public void NotifyModified()
         {
             ModifiedAt = DateTime.UtcNow.ToString("o");

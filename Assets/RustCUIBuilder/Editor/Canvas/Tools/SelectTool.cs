@@ -47,7 +47,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
                     if (currentEvent.control || currentEvent.command)
                     {
                         // Toggle selection
-                        if (doc.SelectedIds.Contains(hitElem.Id)) doc.Deselect(hitElem.Id);
+                        if (doc.IsSelected(hitElem.Id)) doc.Deselect(hitElem.Id);
                         else doc.Select(hitElem.Id, true);
                     }
                     else if (currentEvent.shift)
@@ -58,7 +58,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
                     else
                     {
                         // Single selection (if not already selected)
-                        if (!doc.SelectedIds.Contains(hitElem.Id))
+                        if (!doc.IsSelected(hitElem.Id))
                         {
                             doc.Select(hitElem.Id, false);
                         }

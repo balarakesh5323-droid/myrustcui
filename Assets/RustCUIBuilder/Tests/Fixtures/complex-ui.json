@@ -1,0 +1,36 @@
+[
+  {
+    "name": "DialogModal",
+    "parent": "Overlay",
+    "components": [
+      { "type": "UnityEngine.UI.Image", "color": "0.08 0.09 0.12 0.98", "sprite": "assets/content/ui/ui.background.tile.psd" },
+      { "type": "RectTransform", "anchormin": "0.25 0.25", "anchormax": "0.75 0.75" },
+      { "type": "NeedsCursor" },
+      { "type": "NeedsKeyboard" }
+    ]
+  },
+  {
+    "name": "DialogTitle",
+    "parent": "DialogModal",
+    "components": [
+      { "type": "UnityEngine.UI.Text", "text": "SERVER DIALOG", "fontSize": 18, "font": "RobotoCondensed-Bold.ttf", "color": "1 1 1 1", "align": "MiddleCenter" },
+      { "type": "RectTransform", "anchormin": "0 0.85", "anchormax": "1 1" }
+    ]
+  },
+  {
+    "name": "DialogInput",
+    "parent": "DialogModal",
+    "components": [
+      { "type": "UnityEngine.UI.InputField", "text": "Enter response...", "fontSize": 14, "command": "dialog.submit", "characterLimit": 128 },
+      { "type": "RectTransform", "anchormin": "0.1 0.45", "anchormax": "0.9 0.65" }
+    ]
+  },
+  {
+    "name": "DialogCountdown",
+    "parent": "DialogModal",
+    "components": [
+      { "type": "Countdown", "startTime": 30.0, "endTime": 0.0, "step": 1.0, "timerFormat": "MinutesSeconds", "command": "dialog.timeout" },
+      { "type": "RectTransform", "anchormin": "0.1 0.2", "anchormax": "0.9 0.35" }
+    ]
+  }
+]

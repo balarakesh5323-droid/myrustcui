@@ -124,7 +124,8 @@ namespace RustCUIBuilder.Editor.AssetBrowser
             EditorGUILayout.BeginVertical(GUILayout.Width(76), GUILayout.Height(86));
 
             var tex = spriteMeta.sprite != null ? spriteMeta.sprite.texture : Texture2D.whiteTexture;
-            var btnContent = new GUIContent(tex, $"{spriteMeta.name}\nPath: {spriteMeta.path}");
+            string provenance = spriteMeta.isBundleLoaded ? "AUTHENTIC RUST ASSET" : "PROCEDURAL FALLBACK";
+            var btnContent = new GUIContent(tex, $"{spriteMeta.name}\n[{provenance}]\nPath: {spriteMeta.path}");
 
             if (GUILayout.Button(btnContent, GUILayout.Width(64), GUILayout.Height(64)))
             {

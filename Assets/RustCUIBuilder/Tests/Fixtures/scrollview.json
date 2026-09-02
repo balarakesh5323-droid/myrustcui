@@ -1,0 +1,21 @@
+[
+  {
+    "name": "ScrollArea",
+    "parent": "Overlay",
+    "components": [
+      {
+        "type": "UnityEngine.UI.ScrollView",
+        "horizontal": false,
+        "vertical": true,
+        "movementType": "Clamped",
+        "elasticity": 0.1,
+        "scrollSensitivity": 1.5
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.3 0.2",
+        "anchormax": "0.7 0.8"
+      }
+    ]
+  }
+]

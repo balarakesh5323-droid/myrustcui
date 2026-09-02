@@ -1,0 +1,21 @@
+[
+  {
+    "name": "ActionBtn",
+    "parent": "MainPanel",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Button",
+        "command": "chat.say \"/action\"",
+        "color": "0.2 0.7 0.3 1.0",
+        "close": "MainPanel"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.5 0.1",
+        "anchormax": "0.5 0.1",
+        "offsetmin": "-80 -25",
+        "offsetmax": "80 25"
+      }
+    ]
+  }
+]

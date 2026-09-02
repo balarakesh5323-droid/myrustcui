@@ -1,0 +1,26 @@
+[
+  {
+    "name": "RootOverlay",
+    "parent": "Overlay",
+    "components": [
+      { "type": "UnityEngine.UI.Image", "color": "0 0 0 0.8" },
+      { "type": "RectTransform", "anchormin": "0 0", "anchormax": "1 1" }
+    ]
+  },
+  {
+    "name": "ChildContainer",
+    "parent": "RootOverlay",
+    "components": [
+      { "type": "UnityEngine.UI.Image", "color": "0.15 0.15 0.18 1" },
+      { "type": "RectTransform", "anchormin": "0.2 0.2", "anchormax": "0.8 0.8" }
+    ]
+  },
+  {
+    "name": "DeepChildLabel",
+    "parent": "ChildContainer",
+    "components": [
+      { "type": "UnityEngine.UI.Text", "text": "Deeply Nested CUI Hierarchy", "fontSize": 16, "color": "1 1 1 1" },
+      { "type": "RectTransform", "anchormin": "0 0.8", "anchormax": "1 1" }
+    ]
+  }
+]

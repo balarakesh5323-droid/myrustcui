@@ -1,0 +1,23 @@
+[
+  {
+    "name": "MainPanel",
+    "parent": "Overlay",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Image",
+        "color": "0.1 0.1 0.1 0.9",
+        "sprite": "assets/content/ui/ui.background.tile.psd"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.2 0.2",
+        "anchormax": "0.8 0.8",
+        "offsetmin": "0 0",
+        "offsetmax": "0 0"
+      },
+      {
+        "type": "NeedsCursor"
+      }
+    ]
+  }
+]

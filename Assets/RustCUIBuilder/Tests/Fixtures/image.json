@@ -1,0 +1,21 @@
+[
+  {
+    "name": "WeaponIcon",
+    "parent": "Overlay",
+    "components": [
+      {
+        "type": "UnityEngine.UI.Image",
+        "itemid": -2067472972,
+        "sprite": "rifle.ak",
+        "color": "1 1 1 1"
+      },
+      {
+        "type": "RectTransform",
+        "anchormin": "0.5 0.5",
+        "anchormax": "0.5 0.5",
+        "offsetmin": "-32 -32",
+        "offsetmax": "32 32"
+      }
+    ]
+  }
+]

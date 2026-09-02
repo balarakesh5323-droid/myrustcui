@@ -190,7 +190,8 @@ namespace RustCUIBuilder.Editor.Windows
                 menu.AddItem(new GUIContent("New Project"), false, CreateNewDocument);
                 menu.AddItem(new GUIContent("Open Project (.rustcui)..."), false, OpenProjectFile);
                 menu.AddItem(new GUIContent("Save Project (.rustcui)"), false, SaveProjectFile);
-                menu.AddItem(new GUIContent("Save Project As..."), false, SaveProjectFileAs);
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent("Configure Rust Game Path..."), false, ConfigureRustPath);
                 menu.AddSeparator("");
                 menu.AddItem(new GUIContent("Import CUI JSON..."), false, ImportJsonFile);
                 menu.AddItem(new GUIContent("Export CUI JSON..."), false, ExportJsonFile);
@@ -548,6 +549,23 @@ namespace RustCUIBuilder.Editor.Windows
                 string code = CuiCodeGenerator.GeneratePluginCode(_document);
                 File.WriteAllText(path, code);
                 Debug.Log($"[RustCUIBuilder] Exported Oxide Plugin C# to: {path}");
+            }
+        }
+
+        private void ConfigureRustPath()
+        {
+            string current = SteamDiscovery.GetCustomRustPath();
+            if (string.IsNullOrEmpty(current))
+            {
+                var detected = SteamDiscovery.DiscoverRustInstallation();
+                if (detected.IsValid) current = detected.RustRootPath;
+            }
+            string selected = EditorUtility.OpenFolderPanel("Select Rust Game Directory", current, "");
+            if (!string.IsNullOrEmpty(selected))
+            {
+                SteamDiscovery.SetCustomRustPath(selected);
+                RustAssetDiscovery.ReindexAssets();
+                Debug.Log($"[RustCUIBuilder] Configured custom Rust game path: {selected}");
             }
         }
     }

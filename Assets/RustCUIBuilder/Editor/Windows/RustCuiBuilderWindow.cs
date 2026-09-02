@@ -3,10 +3,13 @@ using System.IO;
 using RustCUIBuilder.Editor.AssetBrowser;
 using RustCUIBuilder.Editor.Canvas;
 using RustCUIBuilder.Editor.CodeSync;
+using RustCUIBuilder.Editor.DifferenceView;
 using RustCUIBuilder.Editor.Hierarchy;
 using RustCUIBuilder.Editor.Inspector;
+using RustCUIBuilder.Editor.Snapshots;
 using RustCUIBuilder.Editor.Toolbox;
 using RustCUIBuilder.Runtime.Core.Models;
+using RustCUIBuilder.Runtime.Core.Project;
 using RustCUIBuilder.Runtime.Core.Serialization;
 using RustCUIBuilder.Runtime.Core.Validation;
 using RustCUIBuilder.Runtime.Discovery;
@@ -17,13 +20,14 @@ using UnityEngine;
 namespace RustCUIBuilder.Editor.Windows
 {
     /// <summary>
-    /// Master dockable Editor Window for the Rust Oxide CUI Visual Builder.
+    /// Master professional IDE-style Editor Window for Rust Oxide CUI Visual Builder.
     /// Integrates Hierarchy, Interactive Canvas, Property Inspector, Toolbox, Asset Browser,
-    /// Code Sync, and real-time Validation Diagnostics.
+    /// Code Sync, Snapshots, Difference Overlay, and real-time Validation Diagnostics.
     /// </summary>
     public class RustCuiBuilderWindow : EditorWindow
     {
         private CuiDocument _document;
+        private RustCuiProject _project = new RustCuiProject();
         private readonly CuiCommandHistory _history = new CuiCommandHistory();
 
         private CuiCanvasEditorView _canvasView;
@@ -32,11 +36,14 @@ namespace RustCUIBuilder.Editor.Windows
         private CuiToolboxView _toolboxView;
         private CuiAssetBrowserView _assetBrowserView;
         private CuiCodeSyncView _codeSyncView;
+        private CuiSnapshotManager _snapshotManager;
+        private CuiDifferenceOverlayView _diffOverlayView;
 
         private enum RightBottomTab
         {
             CodeSync,
-            ItemBrowser,
+            AssetBrowser,
+            Snapshots,
             Validation
         }
 
@@ -48,7 +55,7 @@ namespace RustCUIBuilder.Editor.Windows
         public static void ShowWindow()
         {
             var window = GetWindow<RustCuiBuilderWindow>("Rust CUI Builder");
-            window.minSize = new Vector2(1000, 650);
+            window.minSize = new Vector2(1050, 680);
             window.Show();
         }
 
@@ -60,6 +67,8 @@ namespace RustCUIBuilder.Editor.Windows
             _toolboxView = new CuiToolboxView();
             _assetBrowserView = new CuiAssetBrowserView();
             _codeSyncView = new CuiCodeSyncView();
+            _snapshotManager = new CuiSnapshotManager();
+            _diffOverlayView = new CuiDifferenceOverlayView();
 
             if (_document == null)
             {
@@ -89,64 +98,58 @@ namespace RustCUIBuilder.Editor.Windows
 
         private void CreateNewDocument()
         {
-            _document = new CuiDocument { ProjectName = "MyRustCUI" };
+            _document = new CuiDocument();
+            _project = new RustCuiProject { ProjectName = "New CUI Project" };
+            _project.FromDocument(_document);
+            _currentFilePath = "";
+            _history.Clear();
 
-            // Add default root panel
-            var rootPanel = new CuiElementNode("MainPanel", "Overlay");
-            rootPanel.Components.Add(new CuiImageComponent
+            // Default Canvas Structure
+            var mainPanel = new CuiElementNode
             {
-                Color = "0.08 0.09 0.12 0.94",
-                Sprite = "assets/content/ui/ui.background.tile.psd"
-            });
-            rootPanel.Components.Add(new CuiRectTransformComponent
+                Name = "MainPanel",
+                Parent = "Overlay"
+            };
+            mainPanel.Components.Add(new CuiRectTransformComponent
             {
                 AnchorMin = "0.2 0.2",
-                AnchorMax = "0.8 0.8"
+                AnchorMax = "0.8 0.8",
+                OffsetMin = "0 0",
+                OffsetMax = "0 0"
             });
-            rootPanel.Components.Add(new CuiNeedsCursorComponent());
+            mainPanel.Components.Add(new CuiImageComponent
+            {
+                Color = "0.1 0.12 0.16 0.95",
+                Sprite = "assets/content/ui/ui.background.tile.psd"
+            });
+            mainPanel.Components.Add(new CuiNeedsCursorComponent());
 
-            // Add Header
-            var header = new CuiElementNode("HeaderLabel", "MainPanel");
-            header.Components.Add(new CuiTextComponent
+            var titleText = new CuiElementNode
             {
-                Text = "<b>RUST SERVER MENU</b>",
-                FontSize = 18,
-                Align = TextAnchor.MiddleCenter,
-                Color = "0.95 0.95 0.98 1.0"
+                Name = "TitleText",
+                Parent = "MainPanel"
+            };
+            titleText.Components.Add(new CuiRectTransformComponent
+            {
+                AnchorMin = "0 0.88",
+                AnchorMax = "1 1",
+                OffsetMin = "16 0",
+                OffsetMax = "-16 0"
             });
-            header.Components.Add(new CuiRectTransformComponent
+            titleText.Components.Add(new CuiTextComponent
             {
-                AnchorMin = "0.05 0.88",
-                AnchorMax = "0.95 0.98"
-            });
-
-            // Add Close Button
-            var closeBtn = new CuiElementNode("CloseButton", "MainPanel");
-            closeBtn.Components.Add(new CuiButtonComponent
-            {
-                Color = "0.75 0.2 0.2 0.9",
-                Close = "MainPanel",
-                Command = "myui.close"
-            });
-            closeBtn.Components.Add(new CuiTextComponent
-            {
-                Text = "✕",
-                FontSize = 14,
-                Align = TextAnchor.MiddleCenter
-            });
-            closeBtn.Components.Add(new CuiRectTransformComponent
-            {
-                AnchorMin = "0.90 0.88",
-                AnchorMax = "0.97 0.96"
+                Text = "RUST SERVER STORE",
+                FontSize = 20,
+                Font = "RobotoCondensed-Bold.ttf",
+                Align = TextAnchor.MiddleLeft,
+                Color = "1 1 1 1"
             });
 
-            _document.AddElement(rootPanel);
-            _document.AddElement(header);
-            _document.AddElement(closeBtn);
+            _document.AddElement(mainPanel);
+            _document.AddElement(titleText);
 
-            _document.Select(rootPanel.Id);
-            _history.Clear();
-            _codeSyncView?.UpdateCode(_document);
+            RecordSnapshot("Initial Layout");
+            OnDocumentModified();
         }
 
         private void OnDocumentModified()
@@ -158,160 +161,139 @@ namespace RustCUIBuilder.Editor.Windows
 
         private void Validate()
         {
-            _lastValidationReport = CuiValidator.ValidateDocument(_document);
+            _lastValidationReport = CuiValidator.Validate(_document);
+        }
+
+        private void RecordSnapshot(string actionName)
+        {
+            if (_document == null) return;
+            string json = CuiJsonSerializer.SerializeDocument(_document, true);
+            _history.RecordState(json, actionName);
         }
 
         private void OnGUI()
         {
-            HandleGlobalShortcuts();
-
-            float toolbarHeight = 24f;
-            float statusBarHeight = 20f;
-            var toolbarRect = new Rect(0, 0, position.width, toolbarHeight);
-            var statusRect = new Rect(0, position.height - statusBarHeight, position.width, statusBarHeight);
-            var contentRect = new Rect(0, toolbarHeight, position.width, position.height - toolbarHeight - statusBarHeight);
-
-            DrawTopToolbar(toolbarRect);
-            DrawMainPanes(contentRect);
-            DrawStatusBar(statusRect);
+            DrawMainMenuBar();
+            DrawMainLayout();
+            DrawStatusBar();
+            HandleGlobalHotkeys();
         }
 
-        private void HandleGlobalShortcuts()
+        private void DrawMainMenuBar()
         {
-            var e = Event.current;
-            if (e.type == EventType.KeyDown)
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+
+            // File Menu Dropdown
+            if (GUILayout.Button("File", EditorStyles.toolbarDropDown, GUILayout.Width(45)))
             {
-                // Ctrl + Z (Undo)
-                if (e.control && e.keyCode == KeyCode.Z)
-                {
-                    _history.Undo();
-                    e.Use();
-                }
-                // Ctrl + Y (Redo)
-                else if (e.control && e.keyCode == KeyCode.Y)
-                {
-                    _history.Redo();
-                    e.Use();
-                }
-                // Ctrl + S (Save)
-                else if (e.control && e.keyCode == KeyCode.S)
-                {
-                    SaveProject();
-                    e.Use();
-                }
-                // Ctrl + D (Duplicate)
-                else if (e.control && e.keyCode == KeyCode.D)
-                {
-                    var selected = _document.PrimarySelectedElement;
-                    if (selected != null)
-                    {
-                        var dup = selected.Clone(true);
-                        _document.AddElement(dup);
-                        _document.Select(dup.Id);
-                        e.Use();
-                    }
-                }
-                // Delete
-                else if (e.keyCode == KeyCode.Delete)
-                {
-                    var selected = _document.PrimarySelectedElement;
-                    if (selected != null)
-                    {
-                        _document.RemoveElement(selected.Id, true);
-                        e.Use();
-                    }
-                }
-            }
-        }
-
-        private void DrawTopToolbar(Rect rect)
-        {
-            GUILayout.BeginArea(rect, EditorStyles.toolbar);
-            EditorGUILayout.BeginHorizontal();
-
-            GUILayout.Label("Rust CUI Builder", EditorStyles.boldLabel, GUILayout.Width(110));
-
-            if (GUILayout.Button("New", EditorStyles.toolbarButton, GUILayout.Width(40)))
-            {
-                if (EditorUtility.DisplayDialog("New Project", "Create a new CUI project?", "Yes", "No"))
-                {
-                    CreateNewDocument();
-                }
+                var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("New Project"), false, CreateNewDocument);
+                menu.AddItem(new GUIContent("Open Project (.rustcui)..."), false, OpenProjectFile);
+                menu.AddItem(new GUIContent("Save Project (.rustcui)"), false, SaveProjectFile);
+                menu.AddItem(new GUIContent("Save Project As..."), false, SaveProjectFileAs);
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent("Import CUI JSON..."), false, ImportJsonFile);
+                menu.AddItem(new GUIContent("Export CUI JSON..."), false, ExportJsonFile);
+                menu.AddItem(new GUIContent("Export Oxide C# Plugin (.cs)..."), false, ExportCSharpFile);
+                menu.ShowAsContext();
             }
 
-            if (GUILayout.Button("Open...", EditorStyles.toolbarButton, GUILayout.Width(50)))
+            // Edit Menu
+            if (GUILayout.Button("Edit", EditorStyles.toolbarDropDown, GUILayout.Width(45)))
             {
-                OpenProject();
+                var menu = new GenericMenu();
+                if (_history.CanUndo) menu.AddItem(new GUIContent($"Undo {_history.CurrentActionName} (Ctrl+Z)"), false, UndoAction);
+                else menu.AddDisabledItem(new GUIContent("Undo (Ctrl+Z)"));
+
+                if (_history.CanRedo) menu.AddItem(new GUIContent("Redo (Ctrl+Y)"), false, RedoAction);
+                else menu.AddDisabledItem(new GUIContent("Redo (Ctrl+Y)"));
+
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent("Select All (Ctrl+A)"), false, () => _document.SelectAll());
+                menu.AddItem(new GUIContent("Deselect All"), false, () => _document.ClearSelection());
+                menu.AddItem(new GUIContent("Delete Selected (Del)"), false, DeleteSelectedElement);
+                menu.ShowAsContext();
             }
 
-            if (GUILayout.Button("Save", EditorStyles.toolbarButton, GUILayout.Width(45)))
-            {
-                SaveProject();
-            }
+            GUILayout.Space(8);
 
-            GUILayout.Space(10);
-
-            // Undo / Redo
+            // Undo / Redo buttons
             GUI.enabled = _history.CanUndo;
-            if (GUILayout.Button("↶ Undo", EditorStyles.toolbarButton, GUILayout.Width(50))) _history.Undo();
+            if (GUILayout.Button("↶ Undo", EditorStyles.toolbarButton, GUILayout.Width(55))) UndoAction();
             GUI.enabled = _history.CanRedo;
-            if (GUILayout.Button("↷ Redo", EditorStyles.toolbarButton, GUILayout.Width(50))) _history.Redo();
+            if (GUILayout.Button("↷ Redo", EditorStyles.toolbarButton, GUILayout.Width(55))) RedoAction();
             GUI.enabled = true;
 
-            GUILayout.Space(10);
+            GUILayout.Space(12);
 
             // Resolution Presets Dropdown
-            GUILayout.Label("Resolution:", EditorStyles.miniLabel, GUILayout.Width(65));
-            int currentResIdx = RustResolutionPreset.Presets.IndexOf(_canvasView.CurrentPreset);
-            if (currentResIdx < 0) currentResIdx = 3;
-
-            string[] resNames = RustResolutionPreset.Presets.ConvertAll(p => p.Name).ToArray();
-            int nextResIdx = EditorGUILayout.Popup(currentResIdx, resNames, EditorStyles.toolbarDropDown, GUILayout.Width(220));
-            if (nextResIdx != currentResIdx && nextResIdx >= 0 && nextResIdx < RustResolutionPreset.Presets.Count)
+            GUILayout.Label("Screen:", EditorStyles.miniLabel);
+            int curResIdx = Array.IndexOf(RustResolutionPreset.Presets, _canvasView.CurrentPreset);
+            if (curResIdx < 0) curResIdx = 3;
+            int newResIdx = EditorGUILayout.Popup(curResIdx, RustResolutionPreset.PresetNames, EditorStyles.toolbarDropDown, GUILayout.Width(150));
+            if (newResIdx != curResIdx)
             {
-                _canvasView.CurrentPreset = RustResolutionPreset.Presets[nextResIdx];
+                _canvasView.CurrentPreset = RustResolutionPreset.Presets[newResIdx];
             }
+
+            GUILayout.Space(8);
+
+            // Difference Overlay Controls
+            _diffOverlayView.DrawToolbarControls();
 
             GUILayout.FlexibleSpace();
 
-            // Rust Discovery Status Indicator
-            string installStatus = RustAssetDiscovery.IsIndexed ? $"✓ Rust Linked ({RustAssetDiscovery.TotalItemCount} Items)" : "⚠ Rust Not Linked";
-            GUILayout.Label(installStatus, EditorStyles.miniLabel);
+            // Rust Game Path Indicator
+            var install = SteamDiscovery.DiscoverRustInstallation();
+            string rustStatus = install.IsValid ? $"✓ Rust Found ({install.TotalItemCount} items)" : "⚠ Rust Not Detected";
+            var statusColor = install.IsValid ? new Color(0.4f, 0.9f, 0.4f) : new Color(1f, 0.5f, 0.3f);
+            var prevCol = GUI.contentColor;
+            GUI.contentColor = statusColor;
+            GUILayout.Label(rustStatus, EditorStyles.miniLabel);
+            GUI.contentColor = prevCol;
 
             EditorGUILayout.EndHorizontal();
-            GUILayout.EndArea();
         }
 
-        private void DrawMainPanes(Rect rect)
+        private void DrawMainLayout()
         {
-            float leftWidth = 240f;
-            float rightWidth = 340f;
-            float centerWidth = rect.width - leftWidth - rightWidth;
+            float totalWidth = position.width;
+            float totalHeight = position.height - 44; // minus toolbar and status bar
 
-            var leftRect = new Rect(rect.x, rect.y, leftWidth, rect.height);
-            var centerRect = new Rect(rect.x + leftWidth, rect.y, centerWidth, rect.height);
-            var rightRect = new Rect(rect.x + leftWidth + centerWidth, rect.y, rightWidth, rect.height);
+            float leftPanelWidth = 260f;
+            float rightPanelWidth = 340f;
+            float centerWidth = totalWidth - leftPanelWidth - rightPanelWidth;
 
-            // Left Pane (Hierarchy + Toolbox)
-            float leftSplit = rect.height * 0.55f;
-            var hierarchyRect = new Rect(leftRect.x, leftRect.y, leftRect.width, leftSplit);
-            var toolboxRect = new Rect(leftRect.x, leftRect.y + leftSplit, leftRect.width, leftRect.height - leftSplit);
+            // 1. Left Column (Toolbox Top + Hierarchy Bottom)
+            float toolboxHeight = 240f;
+            float hierarchyHeight = totalHeight - toolboxHeight;
 
-            _hierarchyView.Draw(hierarchyRect, _document, OnDocumentModified);
-            _toolboxView.Draw(toolboxRect, _document, OnDocumentModified);
+            var toolboxRect = new Rect(0, 20, leftPanelWidth, toolboxHeight);
+            var hierarchyRect = new Rect(0, 20 + toolboxHeight, leftPanelWidth, hierarchyHeight);
 
-            // Center Pane (Interactive Canvas)
-            _canvasView.Draw(centerRect, _document, OnDocumentModified);
+            _toolboxView.Draw(toolboxRect, _document, () => { RecordSnapshot("Add Template/Element"); OnDocumentModified(); });
+            _hierarchyView.Draw(hierarchyRect, _document, () => { RecordSnapshot("Hierarchy Edit"); OnDocumentModified(); });
 
-            // Right Pane (Inspector + Bottom Tab)
-            float rightSplit = rect.height * 0.52f;
-            var inspectorRect = new Rect(rightRect.x, rightRect.y, rightRect.width, rightSplit);
-            var bottomTabRect = new Rect(rightRect.x, rightRect.y + rightSplit, rightRect.width, rightRect.height - rightSplit);
+            // 2. Center Column (Canvas Visual Editor)
+            var canvasRect = new Rect(leftPanelWidth, 20, centerWidth, totalHeight);
+            _canvasView.Draw(canvasRect, _document, () => { RecordSnapshot("Canvas Drag/Resize"); OnDocumentModified(); });
 
-            _inspectorView.Draw(inspectorRect, _document, OnDocumentModified);
+            // Draw Difference Overlay if enabled
+            if (_diffOverlayView.IsEnabled)
+            {
+                _diffOverlayView.DrawCanvasOverlay(canvasRect);
+            }
 
-            // Right Bottom Tabs
-            DrawRightBottomTabs(bottomTabRect);
+            // 3. Right Column (Inspector Top + Tabbed Bottom)
+            float inspectorHeight = totalHeight * 0.55f;
+            float rightBottomHeight = totalHeight - inspectorHeight;
+
+            var inspectorRect = new Rect(leftPanelWidth + centerWidth, 20, rightPanelWidth, inspectorHeight);
+            var rightBottomRect = new Rect(leftPanelWidth + centerWidth, 20 + inspectorHeight, rightPanelWidth, rightBottomHeight);
+
+            _inspectorView.Draw(inspectorRect, _document, () => { RecordSnapshot("Property Edit"); OnDocumentModified(); });
+
+            DrawRightBottomTabs(rightBottomRect);
         }
 
         private void DrawRightBottomTabs(Rect rect)
@@ -319,27 +301,33 @@ namespace RustCUIBuilder.Editor.Windows
             GUILayout.BeginArea(rect);
             EditorGUILayout.BeginVertical("box");
 
-            // Tab Buttons
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-            if (GUILayout.Toggle(_rightBottomTab == RightBottomTab.CodeSync, "Live Code / Export", EditorStyles.toolbarButton)) _rightBottomTab = RightBottomTab.CodeSync;
-            if (GUILayout.Toggle(_rightBottomTab == RightBottomTab.ItemBrowser, "Rust Assets", EditorStyles.toolbarButton)) _rightBottomTab = RightBottomTab.ItemBrowser;
+            if (GUILayout.Toggle(_rightBottomTab == RightBottomTab.CodeSync, "Live Code", EditorStyles.toolbarButton)) _rightBottomTab = RightBottomTab.CodeSync;
+            if (GUILayout.Toggle(_rightBottomTab == RightBottomTab.AssetBrowser, "Rust Assets", EditorStyles.toolbarButton)) _rightBottomTab = RightBottomTab.AssetBrowser;
+            if (GUILayout.Toggle(_rightBottomTab == RightBottomTab.Snapshots, "Snapshots", EditorStyles.toolbarButton)) _rightBottomTab = RightBottomTab.Snapshots;
 
-            string diagTitle = _lastValidationReport != null && _lastValidationReport.ErrorCount > 0 ? $"Diagnostics ({_lastValidationReport.ErrorCount} ✕)" : "Diagnostics (✓)";
-            if (GUILayout.Toggle(_rightBottomTab == RightBottomTab.Validation, diagTitle, EditorStyles.toolbarButton)) _rightBottomTab = RightBottomTab.Validation;
+            string valTitle = _lastValidationReport != null && _lastValidationReport.Errors.Count > 0
+                ? $"Diagnostics ({_lastValidationReport.Errors.Count}✕)"
+                : "Diagnostics (✓)";
+            if (GUILayout.Toggle(_rightBottomTab == RightBottomTab.Validation, valTitle, EditorStyles.toolbarButton)) _rightBottomTab = RightBottomTab.Validation;
+
             EditorGUILayout.EndHorizontal();
 
-            var innerRect = new Rect(0, 24, rect.width, rect.height - 24);
+            var innerRect = new Rect(0, 20, rect.width, rect.height - 24);
 
             switch (_rightBottomTab)
             {
                 case RightBottomTab.CodeSync:
-                    _codeSyncView.Draw(innerRect, _document, OnDocumentModified);
+                    _codeSyncView.Draw(innerRect, _document, () => { RecordSnapshot("Code Sync Import"); OnDocumentModified(); });
                     break;
-                case RightBottomTab.ItemBrowser:
-                    _assetBrowserView.Draw(innerRect, _document, OnDocumentModified);
+                case RightBottomTab.AssetBrowser:
+                    _assetBrowserView.Draw(innerRect, _document, () => { RecordSnapshot("Asset Applied"); OnDocumentModified(); });
+                    break;
+                case RightBottomTab.Snapshots:
+                    _snapshotManager.Draw(innerRect, _project, _document, () => { RecordSnapshot("Snapshot Restored"); OnDocumentModified(); });
                     break;
                 case RightBottomTab.Validation:
-                    DrawValidationView(innerRect);
+                    DrawValidationDiagnostics(innerRect);
                     break;
             }
 
@@ -347,79 +335,219 @@ namespace RustCUIBuilder.Editor.Windows
             GUILayout.EndArea();
         }
 
-        private void DrawValidationView(Rect rect)
+        private void DrawValidationDiagnostics(Rect rect)
         {
             GUILayout.BeginArea(rect);
-            if (_lastValidationReport == null || _lastValidationReport.Diagnostics.Count == 0)
+            if (_lastValidationReport == null || _lastValidationReport.IsValid)
             {
-                EditorGUILayout.HelpBox("✓ Document structure and Rust CUI semantic validation passed with 0 errors.", MessageType.Info);
+                EditorGUILayout.HelpBox("✓ All CUI validation checks passed! Document structure is valid for Rust/Oxide.", MessageType.Info);
             }
             else
             {
-                foreach (var diag in _lastValidationReport.Diagnostics)
+                if (_lastValidationReport.Errors.Count > 0)
                 {
-                    MessageType mType = diag.Severity == DiagnosticSeverity.Error ? MessageType.Error :
-                                       (diag.Severity == DiagnosticSeverity.Warning ? MessageType.Warning : MessageType.Info);
-                    EditorGUILayout.HelpBox($"[{diag.RuleId}] {diag.ElementName}: {diag.Message}", mType);
+                    EditorGUILayout.LabelField($"Errors ({_lastValidationReport.Errors.Count}):", EditorStyles.boldLabel);
+                    foreach (var err in _lastValidationReport.Errors)
+                    {
+                        EditorGUILayout.HelpBox($"✕ [{err.ElementName}] {err.Message}", MessageType.Error);
+                    }
+                }
+
+                if (_lastValidationReport.Warnings.Count > 0)
+                {
+                    EditorGUILayout.LabelField($"Warnings ({_lastValidationReport.Warnings.Count}):", EditorStyles.boldLabel);
+                    foreach (var warn in _lastValidationReport.Warnings)
+                    {
+                        EditorGUILayout.HelpBox($"⚠ [{warn.ElementName}] {warn.Message}", MessageType.Warning);
+                    }
                 }
             }
             GUILayout.EndArea();
         }
 
-        private void DrawStatusBar(Rect rect)
+        private void DrawStatusBar()
         {
-            GUILayout.BeginArea(rect, EditorStyles.toolbar);
+            var statusRect = new Rect(0, position.height - 22, position.width, 22);
+            EditorGUI.DrawRect(statusRect, new Color(0.13f, 0.14f, 0.16f, 1f));
+
+            GUILayout.BeginArea(statusRect);
             EditorGUILayout.BeginHorizontal();
 
-            int elemCount = _document != null ? _document.Elements.Count : 0;
-            var selected = _document?.PrimarySelectedElement;
-            string selInfo = selected != null ? $"Selected: {selected.Name} ({selected.Parent})" : "No Selection";
+            string projectLabel = string.IsNullOrEmpty(_currentFilePath) ? _project.ProjectName : Path.GetFileName(_currentFilePath);
+            GUILayout.Label($"Project: {projectLabel} | Elements: {_document?.Elements?.Count ?? 0}", EditorStyles.miniLabel);
 
-            GUILayout.Label($"Elements: {elemCount}  |  {selInfo}", EditorStyles.miniLabel);
             GUILayout.FlexibleSpace();
 
-            string validStatus = _lastValidationReport != null && _lastValidationReport.IsValid ? "✓ Valid CUI" : $"⚠ {_lastValidationReport?.ErrorCount ?? 0} Errors";
-            GUILayout.Label(validStatus, EditorStyles.miniBoldLabel);
+            var selected = _document?.PrimarySelectedElement;
+            string selInfo = selected != null ? $"Selected: {selected.Name} (Parent: {selected.Parent})" : "None Selected";
+            GUILayout.Label(selInfo, EditorStyles.miniLabel);
+
+            GUILayout.Space(20);
+
+            string valSummary = (_lastValidationReport == null || _lastValidationReport.IsValid)
+                ? "✓ CUI Valid"
+                : $"✕ {_lastValidationReport.Errors.Count} Errors, {_lastValidationReport.Warnings.Count} Warnings";
+            GUILayout.Label(valSummary, EditorStyles.miniLabel);
 
             EditorGUILayout.EndHorizontal();
             GUILayout.EndArea();
         }
 
-        private void SaveProject()
+        private void HandleGlobalHotkeys()
         {
-            if (string.IsNullOrEmpty(_currentFilePath))
+            var e = Event.current;
+            if (e.type == EventType.KeyDown)
             {
-                _currentFilePath = EditorUtility.SaveFilePanel("Save CUI Project", "", $"{_document.ProjectName}.cui", "cui");
-            }
-
-            if (!string.IsNullOrEmpty(_currentFilePath))
-            {
-                string json = CuiJsonSerializer.SerializeDocument(_document, true);
-                File.WriteAllText(_currentFilePath, json);
-                Debug.Log($"[RustCUIBuilder] Project saved to: {_currentFilePath}");
+                if (e.control && e.keyCode == KeyCode.Z)
+                {
+                    UndoAction();
+                    e.Use();
+                }
+                else if (e.control && (e.keyCode == KeyCode.Y || (e.shift && e.keyCode == KeyCode.Z)))
+                {
+                    RedoAction();
+                    e.Use();
+                }
+                else if (e.keyCode == KeyCode.Delete)
+                {
+                    DeleteSelectedElement();
+                    e.Use();
+                }
+                else if (e.control && e.keyCode == KeyCode.S)
+                {
+                    SaveProjectFile();
+                    e.Use();
+                }
             }
         }
 
-        private void OpenProject()
+        private void UndoAction()
         {
-            string path = EditorUtility.OpenFilePanel("Open CUI Project", "", "cui,json");
-            if (!string.IsNullOrEmpty(path) && File.Exists(path))
+            string json = _history.Undo();
+            if (!string.IsNullOrEmpty(json))
             {
-                string json = File.ReadAllText(path);
-                var result = CuiParser.ParseJson(json, Path.GetFileNameWithoutExtension(path));
-                if (result.Success && result.Document != null)
+                ApplySerializedState(json);
+            }
+        }
+
+        private void RedoAction()
+        {
+            string json = _history.Redo();
+            if (!string.IsNullOrEmpty(json))
+            {
+                ApplySerializedState(json);
+            }
+        }
+
+        private void ApplySerializedState(string json)
+        {
+            var result = CuiParser.ParseJson(json);
+            if (result.Success && result.Document != null)
+            {
+                _document.Elements.Clear();
+                foreach (var elem in result.Document.Elements)
                 {
-                    _document = result.Document;
+                    _document.AddElement(elem);
+                }
+                OnDocumentModified();
+            }
+        }
+
+        private void DeleteSelectedElement()
+        {
+            var selected = _document?.PrimarySelectedElement;
+            if (selected != null)
+            {
+                _document.RemoveElement(selected.Id);
+                RecordSnapshot($"Delete {selected.Name}");
+                OnDocumentModified();
+            }
+        }
+
+        private void SaveProjectFile()
+        {
+            if (string.IsNullOrEmpty(_currentFilePath))
+            {
+                SaveProjectFileAs();
+            }
+            else
+            {
+                _project.FromDocument(_document);
+                _project.SaveToFile(_currentFilePath);
+            }
+        }
+
+        private void SaveProjectFileAs()
+        {
+            string path = EditorUtility.SaveFilePanel("Save Rust CUI Project", "", $"{_project.ProjectName}.rustcui", "rustcui");
+            if (!string.IsNullOrEmpty(path))
+            {
+                _currentFilePath = path;
+                _project.ProjectName = Path.GetFileNameWithoutExtension(path);
+                _project.FromDocument(_document);
+                _project.SaveToFile(path);
+            }
+        }
+
+        private void OpenProjectFile()
+        {
+            string path = EditorUtility.OpenFilePanel("Open Rust CUI Project", "", "rustcui");
+            if (!string.IsNullOrEmpty(path))
+            {
+                var proj = RustCuiProject.LoadFromFile(path);
+                if (proj != null)
+                {
+                    _project = proj;
                     _currentFilePath = path;
+                    _document = proj.ToDocument();
                     _document.OnDocumentModified += OnDocumentModified;
                     _document.OnSelectionChanged += Repaint;
+                    _history.Clear();
+                    RecordSnapshot("Open Project");
                     OnDocumentModified();
-                    Debug.Log($"[RustCUIBuilder] Loaded project with {_document.Elements.Count} elements.");
                 }
-                else
+            }
+        }
+
+        private void ImportJsonFile()
+        {
+            string path = EditorUtility.OpenFilePanel("Import CUI JSON", "", "json");
+            if (!string.IsNullOrEmpty(path))
+            {
+                string json = File.ReadAllText(path);
+                var result = CuiParser.ParseJson(json);
+                if (result.Success && result.Document != null)
                 {
-                    EditorUtility.DisplayDialog("Error Loading Project", string.Join("\n", result.Errors), "OK");
+                    _document.Elements.Clear();
+                    foreach (var elem in result.Document.Elements)
+                    {
+                        _document.AddElement(elem);
+                    }
+                    RecordSnapshot("Import JSON");
+                    OnDocumentModified();
                 }
+            }
+        }
+
+        private void ExportJsonFile()
+        {
+            string path = EditorUtility.SaveFilePanel("Export CUI JSON", "", "CuiLayout.json", "json");
+            if (!string.IsNullOrEmpty(path))
+            {
+                string json = CuiJsonSerializer.SerializeDocument(_document, true);
+                File.WriteAllText(path, json);
+                Debug.Log($"[RustCUIBuilder] Exported CUI JSON to: {path}");
+            }
+        }
+
+        private void ExportCSharpFile()
+        {
+            string path = EditorUtility.SaveFilePanel("Export Oxide Plugin C#", "", "MyCuiPlugin.cs", "cs");
+            if (!string.IsNullOrEmpty(path))
+            {
+                string code = CuiCodeGenerator.GeneratePluginCode(_document);
+                File.WriteAllText(path, code);
+                Debug.Log($"[RustCUIBuilder] Exported Oxide Plugin C# to: {path}");
             }
         }
     }

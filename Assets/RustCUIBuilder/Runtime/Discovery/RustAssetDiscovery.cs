@@ -14,8 +14,8 @@ namespace RustCUIBuilder.Runtime.Discovery
     }
 
     /// <summary>
-    /// Discovers, indexes, and caches Rust assets including 2,800+ item icons from Bundles/items,
-    /// authentic extracted sprites from Rust AssetBundles, materials, fonts, and UI layers.
+    /// Discovers, indexes, and caches Rust assets including 1,723 item icons from Bundles/items,
+    /// authentic sprites, materials, fonts, and UI layers with instant non-blocking performance.
     /// </summary>
     public static class RustAssetDiscovery
     {
@@ -27,6 +27,7 @@ namespace RustCUIBuilder.Runtime.Discovery
             public string displayName;
             public string pngFilePath;
             public string jsonFilePath;
+            public bool isIdLoaded;
         }
 
         [Serializable]
@@ -149,61 +150,38 @@ namespace RustCUIBuilder.Runtime.Discovery
 
         public static void ReindexAssets()
         {
+            if (IsIndexed && AllItemsList.Count > 0 && AllUiSpritesList.Count > 0) return;
+
             ItemCacheByName.Clear();
             ItemCacheById.Clear();
             AllItemsList.Clear();
             AllUiSpritesList.Clear();
             LoadedSpriteCache.Clear();
 
-            // 1. Attempt to load live AssetBundles from Rust installation
-            RustBundleLoader.LoadBundles();
-
-            // 2. Add all sprites extracted from Rust AssetBundles
-            foreach (var pair in RustBundleLoader.Sprites)
-            {
-                string filename = Path.GetFileNameWithoutExtension(pair.Key);
-                string cat = pair.Key.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
-
-                AllUiSpritesList.Add(new UiSpriteMetadata
-                {
-                    path = pair.Key,
-                    name = filename,
-                    category = cat,
-                    sprite = pair.Value,
-                    isBundleLoaded = true
-                });
-
-                LoadedSpriteCache[pair.Key] = pair.Value;
-                LoadedSpriteCache[filename] = pair.Value;
-            }
-
-            // 3. Add Verified UI Sprites with procedural fallbacks for any missing entries
+            // 1. Initialize Verified UI Sprites with procedural fallbacks
             foreach (var spritePath in VerifiedSprites)
             {
-                if (!LoadedSpriteCache.ContainsKey(spritePath))
-                {
-                    string filename = Path.GetFileNameWithoutExtension(spritePath);
-                    string category = spritePath.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
+                string filename = Path.GetFileNameWithoutExtension(spritePath);
+                string category = spritePath.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
 
-                    var spriteObj = GenerateOrLoadSprite(spritePath, filename);
-                    AllUiSpritesList.Add(new UiSpriteMetadata
-                    {
-                        path = spritePath,
-                        name = filename,
-                        category = category,
-                        sprite = spriteObj,
-                        isBundleLoaded = false
-                    });
-                    if (spriteObj != null)
-                    {
-                        LoadedSpriteCache[spritePath] = spriteObj;
-                    }
+                var spriteObj = GenerateOrLoadSprite(spritePath, filename);
+                AllUiSpritesList.Add(new UiSpriteMetadata
+                {
+                    path = spritePath,
+                    name = filename,
+                    category = category,
+                    sprite = spriteObj,
+                    isBundleLoaded = false
+                });
+                if (spriteObj != null)
+                {
+                    LoadedSpriteCache[spritePath] = spriteObj;
                 }
             }
 
-            // 4. Discover Item Icons from Steam Rust installation
+            // 2. Discover Item Icons from Steam Rust installation (Instant file scan)
             var install = SteamDiscovery.DiscoverRustInstallation();
-            if (install.IsValid && !string.IsNullOrEmpty(install.ItemsBundlePath))
+            if (install.IsValid && !string.IsNullOrEmpty(install.ItemsBundlePath) && Directory.Exists(install.ItemsBundlePath))
             {
                 try
                 {
@@ -211,30 +189,14 @@ namespace RustCUIBuilder.Runtime.Discovery
                     foreach (var pngPath in files)
                     {
                         string shortname = Path.GetFileNameWithoutExtension(pngPath);
-                        string jsonPath = Path.ChangeExtension(pngPath, ".json");
-
                         var item = new ItemAssetMetadata
                         {
                             shortname = shortname,
                             displayName = FormatDisplayName(shortname),
                             pngFilePath = pngPath,
-                            jsonFilePath = File.Exists(jsonPath) ? jsonPath : null
+                            jsonFilePath = Path.ChangeExtension(pngPath, ".json"),
+                            isIdLoaded = false
                         };
-
-                        if (File.Exists(jsonPath))
-                        {
-                            try
-                            {
-                                string json = File.ReadAllText(jsonPath);
-                                int id = ExtractItemIdFromJson(json);
-                                if (id != 0)
-                                {
-                                    item.itemId = id;
-                                    ItemCacheById[id] = item;
-                                }
-                            }
-                            catch { }
-                        }
 
                         ItemCacheByName[shortname] = item;
                         AllItemsList.Add(item);
@@ -247,21 +209,49 @@ namespace RustCUIBuilder.Runtime.Discovery
             }
 
             IsIndexed = true;
-            Debug.Log($"[RustAssetDiscovery] Discovery complete: {AllItemsList.Count} items indexed, {AllUiSpritesList.Count} UI sprites ready.");
+            Debug.Log($"[RustAssetDiscovery] Instant discovery complete: {AllItemsList.Count} items indexed, {AllUiSpritesList.Count} UI sprites ready.");
         }
 
         public static ItemAssetMetadata FindItemByName(string name)
         {
             if (string.IsNullOrEmpty(name)) return null;
             ItemCacheByName.TryGetValue(name, out var item);
+            if (item != null && !item.isIdLoaded) LoadItemIdLazy(item);
             return item;
         }
 
         public static ItemAssetMetadata FindItemById(int id)
         {
             if (id == 0) return null;
-            ItemCacheById.TryGetValue(id, out var item);
-            return item;
+            if (ItemCacheById.TryGetValue(id, out var cached)) return cached;
+
+            foreach (var item in AllItemsList)
+            {
+                if (!item.isIdLoaded) LoadItemIdLazy(item);
+                if (item.itemId == id) return item;
+            }
+            return null;
+        }
+
+        private static void LoadItemIdLazy(ItemAssetMetadata item)
+        {
+            if (item == null || item.isIdLoaded) return;
+            item.isIdLoaded = true;
+
+            if (!string.IsNullOrEmpty(item.jsonFilePath) && File.Exists(item.jsonFilePath))
+            {
+                try
+                {
+                    string json = File.ReadAllText(item.jsonFilePath);
+                    int id = ExtractItemIdFromJson(json);
+                    if (id != 0)
+                    {
+                        item.itemId = id;
+                        ItemCacheById[id] = item;
+                    }
+                }
+                catch { }
+            }
         }
 
         public static Sprite GetSpriteByPath(string path)
@@ -270,12 +260,6 @@ namespace RustCUIBuilder.Runtime.Discovery
 
             if (LoadedSpriteCache.TryGetValue(path, out var cached) && cached != null)
                 return cached;
-
-            if (RustBundleLoader.Sprites.TryGetValue(path, out var bundleSprite) && bundleSprite != null)
-            {
-                LoadedSpriteCache[path] = bundleSprite;
-                return bundleSprite;
-            }
 
             // Check if it's an item icon shortname
             var item = FindItemByName(path);

@@ -252,11 +252,45 @@ namespace RustCUIBuilder.Editor.Canvas
             var btn = elem.GetComponent<CuiButtonComponent>();
 
             Color fillColor = new Color(0.2f, 0.2f, 0.25f, 0.4f);
-            if (img != null) fillColor = CuiColorExtensions.ToUnityColor(img.Color, fillColor);
-            else if (btn != null) fillColor = CuiColorExtensions.ToUnityColor(btn.Color, new Color(0.2f, 0.5f, 0.3f, 0.8f));
-            else if (raw != null) fillColor = CuiColorExtensions.ToUnityColor(raw.Color, fillColor);
+            Sprite elemSprite = null;
 
-            EditorGUI.DrawRect(elemScreenRect, fillColor);
+            if (img != null)
+            {
+                fillColor = CuiColorExtensions.ToUnityColor(img.Color, Color.white);
+                if (img.ItemId != 0)
+                {
+                    var item = RustAssetDiscovery.FindItemById(img.ItemId);
+                    if (item != null) elemSprite = RustAssetDiscovery.LoadItemIcon(item);
+                }
+                else if (!string.IsNullOrEmpty(img.Sprite))
+                {
+                    elemSprite = RustAssetDiscovery.GetSpriteByPath(img.Sprite);
+                }
+            }
+            else if (btn != null)
+            {
+                fillColor = CuiColorExtensions.ToUnityColor(btn.Color, new Color(0.2f, 0.5f, 0.3f, 0.8f));
+                if (!string.IsNullOrEmpty(btn.Material))
+                {
+                    elemSprite = RustAssetDiscovery.GetSpriteByPath(btn.Material);
+                }
+            }
+            else if (raw != null)
+            {
+                fillColor = CuiColorExtensions.ToUnityColor(raw.Color, fillColor);
+            }
+
+            if (elemSprite != null && elemSprite.texture != null)
+            {
+                var prevCol = GUI.color;
+                GUI.color = fillColor;
+                GUI.DrawTexture(elemScreenRect, elemSprite.texture, ScaleMode.ScaleToFit);
+                GUI.color = prevCol;
+            }
+            else
+            {
+                EditorGUI.DrawRect(elemScreenRect, fillColor);
+            }
 
             // Element Text
             if (text != null && !string.IsNullOrEmpty(text.Text))

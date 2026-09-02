@@ -181,8 +181,6 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
                 img.color = CuiColorExtensions.ToUnityColor(imgComp.Color, Color.white);
                 img.type = imgComp.ImageType;
                 img.fillCenter = imgComp.FillCenter ?? true;
-                img.raycastTarget = imgComp.BlocksRaycast ?? true;
-
                 if (imgComp.ItemId != 0)
                 {
                     var item = RustAssetDiscovery.FindItemById(imgComp.ItemId);
@@ -191,6 +189,11 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
                         var sprite = RustAssetDiscovery.LoadItemIcon(item);
                         if (sprite != null) img.sprite = sprite;
                     }
+                }
+                else if (!string.IsNullOrEmpty(imgComp.Sprite))
+                {
+                    var sprite = RustAssetDiscovery.GetSpriteByPath(imgComp.Sprite);
+                    if (sprite != null) img.sprite = sprite;
                 }
             }
 

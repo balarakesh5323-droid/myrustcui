@@ -20,6 +20,7 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
         Vector2 CanvasToRust(Vector2 canvasPos, float canvasWidth, float canvasHeight);
 
         Rect GetElementCanvasRect(CuiElementNode elem, CuiDocument doc, float canvasWidth, float canvasHeight);
+        Rect GetParentCanvasRect(CuiElementNode elem, CuiDocument doc, float canvasWidth, float canvasHeight);
         Rect GetElementScreenRect(CuiElementNode elem, CuiDocument doc, Rect viewportRect, Vector2 pan, float zoom, float canvasWidth, float canvasHeight);
 
         Vector2[] GetAnchorScreenPoints(CuiElementNode elem, CuiDocument doc, Rect viewportRect, Vector2 pan, float zoom, float canvasWidth, float canvasHeight);

@@ -59,6 +59,8 @@ namespace RustCUIBuilder.Runtime.Core.Models
             return Elements.FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
         }
 
+        public CuiElementNode FindElementByName(string name) => FindByName(name);
+
         public List<CuiElementNode> GetChildrenOf(string parentName)
         {
             if (string.IsNullOrEmpty(parentName)) return new List<CuiElementNode>();

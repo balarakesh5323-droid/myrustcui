@@ -195,7 +195,9 @@ namespace RustCUIBuilder.Editor.Hierarchy
         private void ShowElementContextMenu(CuiElementNode elem, CuiDocument doc, Action onModified)
         {
             var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("Duplicate"), false, () =>
+            var list = new List<CuiElementNode> { elem };
+
+            menu.AddItem(new GUIContent("Duplicate (Ctrl+D)"), false, () =>
             {
                 var clone = elem.Clone(true, $"{elem.Name}_Copy");
                 doc.AddElement(clone);
@@ -203,18 +205,66 @@ namespace RustCUIBuilder.Editor.Hierarchy
                 onModified?.Invoke();
             });
 
-            menu.AddItem(new GUIContent("Delete"), false, () =>
+            menu.AddItem(new GUIContent("Delete (Del)"), false, () =>
             {
                 doc.RemoveElement(elem.Id);
                 onModified?.Invoke();
             });
 
             menu.AddSeparator("");
+
+            // Selection Helpers
+            menu.AddItem(new GUIContent("Select/Select Children"), false, () =>
+            {
+                var children = doc.GetChildrenOf(elem.Name);
+                foreach (var c in children) doc.Select(c.Id, true);
+                onModified?.Invoke();
+            });
+            menu.AddItem(new GUIContent("Select/Select Siblings"), false, () =>
+            {
+                var siblings = doc.Elements.Where(e => e.Parent == elem.Parent && e.Id != elem.Id);
+                foreach (var s in siblings) doc.Select(s.Id, true);
+                onModified?.Invoke();
+            });
+            menu.AddItem(new GUIContent("Select/Select Parent"), false, () =>
+            {
+                var parent = doc.FindElementByName(elem.Parent);
+                if (parent != null) doc.Select(parent.Id, false);
+                onModified?.Invoke();
+            });
+
+            menu.AddSeparator("");
+
+            // Ordering
+            menu.AddItem(new GUIContent("Order/Bring to Front (Ctrl+Shift+])"), false, () =>
+            {
+                RustCUIBuilder.Editor.Canvas.Services.CanvasHierarchyService.BringToFront(list, doc);
+                onModified?.Invoke();
+            });
+            menu.AddItem(new GUIContent("Order/Bring Forward (Ctrl+])"), false, () =>
+            {
+                RustCUIBuilder.Editor.Canvas.Services.CanvasHierarchyService.BringForward(list, doc);
+                onModified?.Invoke();
+            });
+            menu.AddItem(new GUIContent("Order/Send Backward (Ctrl+[)"), false, () =>
+            {
+                RustCUIBuilder.Editor.Canvas.Services.CanvasHierarchyService.SendBackward(list, doc);
+                onModified?.Invoke();
+            });
+            menu.AddItem(new GUIContent("Order/Send to Back (Ctrl+Shift+[)"), false, () =>
+            {
+                RustCUIBuilder.Editor.Canvas.Services.CanvasHierarchyService.SendToBack(list, doc);
+                onModified?.Invoke();
+            });
+
+            menu.AddSeparator("");
+
+            // Add Child
             menu.AddItem(new GUIContent("Add Child/Panel"), false, () =>
             {
                 var child = new CuiElementNode($"{elem.Name}_Child", elem.Name);
                 child.Components.Add(new CuiRectTransformComponent());
-                child.Components.Add(new CuiImageComponent());
+                child.Components.Add(new CuiImageComponent { Color = "0.15 0.16 0.2 0.9", Sprite = "assets/content/ui/ui.background.tile.psd" });
                 doc.AddElement(child);
                 doc.Select(child.Id);
                 onModified?.Invoke();
@@ -223,7 +273,7 @@ namespace RustCUIBuilder.Editor.Hierarchy
             {
                 var child = new CuiElementNode($"{elem.Name}_Text", elem.Name);
                 child.Components.Add(new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" });
-                child.Components.Add(new CuiTextComponent { Text = "Child Label" });
+                child.Components.Add(new CuiTextComponent { Text = "<b>Child Label</b>" });
                 doc.AddElement(child);
                 doc.Select(child.Id);
                 onModified?.Invoke();
@@ -232,8 +282,8 @@ namespace RustCUIBuilder.Editor.Hierarchy
             {
                 var child = new CuiElementNode($"{elem.Name}_Btn", elem.Name);
                 child.Components.Add(new CuiRectTransformComponent { AnchorMin = "0.1 0.1", AnchorMax = "0.9 0.9" });
-                child.Components.Add(new CuiButtonComponent { Command = "action.exec" });
-                child.Components.Add(new CuiTextComponent { Text = "Button", Align = TextAnchor.MiddleCenter });
+                child.Components.Add(new CuiButtonComponent { Command = "action.exec", Color = "0.2 0.6 0.3 0.9" });
+                child.Components.Add(new CuiTextComponent { Text = "<b>BUTTON</b>", Align = TextAnchor.MiddleCenter });
                 doc.AddElement(child);
                 doc.Select(child.Id);
                 onModified?.Invoke();

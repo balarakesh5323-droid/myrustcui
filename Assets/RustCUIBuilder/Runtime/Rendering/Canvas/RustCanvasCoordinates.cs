@@ -105,19 +105,24 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
         }
 
         // 5. Element Canvas Rect Calculation
-        public Rect GetElementCanvasRect(CuiElementNode elem, CuiDocument doc, float canvasWidth, float canvasHeight)
+        public Rect GetParentCanvasRect(CuiElementNode elem, CuiDocument doc, float canvasWidth, float canvasHeight)
         {
             if (elem == null) return new Rect(0, 0, canvasWidth, canvasHeight);
-
-            Rect parentRect = new Rect(0, 0, canvasWidth, canvasHeight);
             if (!string.IsNullOrEmpty(elem.Parent) && Array.IndexOf(RustAssetDiscovery.VerifiedLayers, elem.Parent) < 0)
             {
                 var parentElem = doc?.FindByName(elem.Parent);
                 if (parentElem != null && parentElem != elem)
                 {
-                    parentRect = GetElementCanvasRect(parentElem, doc, canvasWidth, canvasHeight);
+                    return GetElementCanvasRect(parentElem, doc, canvasWidth, canvasHeight);
                 }
             }
+            return new Rect(0, 0, canvasWidth, canvasHeight);
+        }
+
+        public Rect GetElementCanvasRect(CuiElementNode elem, CuiDocument doc, float canvasWidth, float canvasHeight)
+        {
+            if (elem == null) return new Rect(0, 0, canvasWidth, canvasHeight);
+            Rect parentRect = GetParentCanvasRect(elem, doc, canvasWidth, canvasHeight);
 
             var rectComp = elem.GetComponent<CuiRectTransformComponent>() ?? new CuiRectTransformComponent();
             Vector2 anchorMin = RustCanvasScaler.ParseVector2(rectComp.AnchorMin, Vector2.zero);

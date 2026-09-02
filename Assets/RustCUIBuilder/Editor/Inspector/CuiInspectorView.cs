@@ -204,10 +204,49 @@ namespace RustCUIBuilder.Editor.Inspector
             if (GUILayout.Button("Right", EditorStyles.miniButton)) SetAnchorPreset(rect, "1 0", "1 1", "-60 0", "0 0");
             EditorGUILayout.EndHorizontal();
 
+            EditorGUILayout.Space(2);
+            EditorGUILayout.LabelField("Pixel Offsets & Precision Size", EditorStyles.miniBoldLabel);
+            var oMin = RustCanvasScaler.ParseVector2(rect.OffsetMin, Vector2.zero);
+            var oMax = RustCanvasScaler.ParseVector2(rect.OffsetMax, Vector2.zero);
+
+            float width = Mathf.Max(0, oMax.x - oMin.x);
+            float height = Mathf.Max(0, oMax.y - oMin.y);
+
+            EditorGUILayout.BeginHorizontal();
+            float newX = EditorGUILayout.FloatField("Offset X", oMin.x);
+            if (GUILayout.Button("-1", EditorStyles.miniButton, GUILayout.Width(24))) newX -= 1;
+            if (GUILayout.Button("+1", EditorStyles.miniButton, GUILayout.Width(24))) newX += 1;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            float newY = EditorGUILayout.FloatField("Offset Y", oMin.y);
+            if (GUILayout.Button("-1", EditorStyles.miniButton, GUILayout.Width(24))) newY -= 1;
+            if (GUILayout.Button("+1", EditorStyles.miniButton, GUILayout.Width(24))) newY += 1;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            float newW = EditorGUILayout.FloatField("Width (px)", width > 0 ? width : 100);
+            if (GUILayout.Button("-10", EditorStyles.miniButton, GUILayout.Width(28))) newW = Mathf.Max(10, newW - 10);
+            if (GUILayout.Button("+10", EditorStyles.miniButton, GUILayout.Width(28))) newW += 10;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            float newH = EditorGUILayout.FloatField("Height (px)", height > 0 ? height : 50);
+            if (GUILayout.Button("-10", EditorStyles.miniButton, GUILayout.Width(28))) newH = Mathf.Max(10, newH - 10);
+            if (GUILayout.Button("+10", EditorStyles.miniButton, GUILayout.Width(28))) newH += 10;
+            EditorGUILayout.EndHorizontal();
+
+            if (newX != oMin.x || newY != oMin.y || newW != width || newH != height)
+            {
+                rect.OffsetMin = RustCanvasScaler.FormatVector2(new Vector2(newX, newY), "0.#");
+                rect.OffsetMax = RustCanvasScaler.FormatVector2(new Vector2(newX + newW, newY + newH), "0.#");
+            }
+
+            EditorGUILayout.Space(2);
             rect.AnchorMin = EditorGUILayout.TextField("Anchor Min", rect.AnchorMin);
             rect.AnchorMax = EditorGUILayout.TextField("Anchor Max", rect.AnchorMax);
-            rect.OffsetMin = EditorGUILayout.TextField("Offset Min (px)", rect.OffsetMin);
-            rect.OffsetMax = EditorGUILayout.TextField("Offset Max (px)", rect.OffsetMax);
+            rect.OffsetMin = EditorGUILayout.TextField("Raw Offset Min", rect.OffsetMin);
+            rect.OffsetMax = EditorGUILayout.TextField("Raw Offset Max", rect.OffsetMax);
             rect.Pivot = EditorGUILayout.TextField("Pivot", rect.Pivot);
             rect.Rotation = EditorGUILayout.Slider("Rotation (deg)", rect.Rotation, -180f, 180f);
 
@@ -464,7 +503,7 @@ namespace RustCUIBuilder.Editor.Inspector
             cg.Alpha = EditorGUILayout.Slider("Group Alpha", cg.Alpha ?? 1f, 0f, 1f);
             cg.BlocksRaycasts = EditorGUILayout.Toggle("Blocks Raycasts", cg.BlocksRaycasts ?? true);
             cg.Interactable = EditorGUILayout.Toggle("Interactable", cg.Interactable ?? true);
-            cg.IgnoreParentGroups = EditorGUILayout.Toggle("Ignore Parent Groups", cg.IgnoreParentGroups ?? false);
+            cg.Fade = EditorGUILayout.TextField("Fade Mode", cg.Fade);
         }
 
         private void DrawTooltipInspector(CuiTooltipComponent tooltip)

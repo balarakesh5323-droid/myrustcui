@@ -4,12 +4,13 @@ using UnityEditor;
 using UnityEngine;
 using RustCUIBuilder.Runtime.Core.Models;
 using RustCUIBuilder.Runtime.Rendering.Canvas;
+using RustCUIBuilder.Editor.Canvas.Services;
 
 namespace RustCUIBuilder.Editor.Canvas.Tools
 {
     /// <summary>
     /// Interactive element move tool supporting multi-element group movement,
-    /// real-time grid and guide snapping, and atomic single-undo transaction on release.
+    /// real-time smart guides, edge/center snapping, live dimension HUDs, and atomic single-undo transactions.
     /// </summary>
     public class MoveTool : ICanvasTool
     {
@@ -19,10 +20,15 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
         private bool _isDragging;
         private Vector2 _dragStartScreen;
         private Vector2 _dragStartCanvas;
+        private Rect _primaryStartCanvasRect;
         private readonly Dictionary<string, (Vector2 offsetMin, Vector2 offsetMax)> _initialOffsets = new Dictionary<string, (Vector2, Vector2)>();
 
         public void OnToolActivate() { _isDragging = false; }
-        public void OnToolDeactivate() { _isDragging = false; }
+        public void OnToolDeactivate()
+        {
+            _isDragging = false;
+            CanvasSnapService.ActiveGuides.Clear();
+        }
 
         public bool ProcessEvent(
             Event currentEvent,
@@ -56,6 +62,9 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
                     _dragStartScreen = currentEvent.mousePosition;
                     _dragStartCanvas = coords.ScreenToCanvas(currentEvent.mousePosition, viewportRect, pan, zoom);
 
+                    var primary = doc.PrimarySelectedElement ?? hitElem;
+                    _primaryStartCanvasRect = coords.GetElementCanvasRect(primary, doc, canvasWidth, canvasHeight);
+
                     _initialOffsets.Clear();
                     foreach (var sel in doc.SelectedElements)
                     {
@@ -76,13 +85,16 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             if (currentEvent.type == EventType.MouseDrag && _isDragging)
             {
                 var curCanvas = coords.ScreenToCanvas(currentEvent.mousePosition, viewportRect, pan, zoom);
-                var delta = curCanvas - _dragStartCanvas;
+                var rawDelta = curCanvas - _dragStartCanvas;
 
-                if (guideSystem != null && guideSystem.SnapToGrid)
+                var primary = doc.PrimarySelectedElement;
+                Vector2 finalDelta = rawDelta;
+
+                if (primary != null && guideSystem != null)
                 {
-                    float gs = guideSystem.GridSize;
-                    delta.x = Mathf.Round(delta.x / gs) * gs;
-                    delta.y = Mathf.Round(delta.y / gs) * gs;
+                    var movedRect = new Rect(_primaryStartCanvasRect.x + rawDelta.x, _primaryStartCanvasRect.y + rawDelta.y, _primaryStartCanvasRect.width, _primaryStartCanvasRect.height);
+                    CanvasSnapService.CalculateSnap(movedRect, primary, doc, canvasWidth, canvasHeight, guideSystem, zoom, out var snapDelta);
+                    finalDelta += snapDelta;
                 }
 
                 foreach (var sel in doc.SelectedElements)
@@ -92,8 +104,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
                     if (r == null) continue;
 
                     // Note: Rust Y is inverted relative to Canvas GUI Y
-                    var newMin = new Vector2(orig.offsetMin.x + delta.x, orig.offsetMin.y - delta.y);
-                    var newMax = new Vector2(orig.offsetMax.x + delta.x, orig.offsetMax.y - delta.y);
+                    var newMin = new Vector2(orig.offsetMin.x + finalDelta.x, orig.offsetMin.y - finalDelta.y);
+                    var newMax = new Vector2(orig.offsetMax.x + finalDelta.x, orig.offsetMax.y - finalDelta.y);
 
                     r.OffsetMin = RustCanvasScaler.FormatVector2(newMin, "0.#");
                     r.OffsetMax = RustCanvasScaler.FormatVector2(newMax, "0.#");
@@ -108,6 +120,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             if (currentEvent.type == EventType.MouseUp && _isDragging)
             {
                 _isDragging = false;
+                CanvasSnapService.ActiveGuides.Clear();
                 onCommitUndo?.Invoke("Move Element(s)");
                 currentEvent.Use();
                 return true;
@@ -117,6 +130,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             if (currentEvent.type == EventType.KeyDown && currentEvent.keyCode == KeyCode.Escape && _isDragging)
             {
                 _isDragging = false;
+                CanvasSnapService.ActiveGuides.Clear();
                 foreach (var sel in doc.SelectedElements)
                 {
                     if (!_initialOffsets.TryGetValue(sel.Id, out var orig)) continue;
@@ -143,7 +157,18 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             float canvasHeight,
             CuiDocument doc)
         {
-            // Move tool uses standard selection bounding box
+            if (_isDragging)
+            {
+                CanvasSnapService.DrawActiveGuides(viewportRect, pan, zoom);
+
+                var primary = doc?.PrimarySelectedElement;
+                if (primary != null)
+                {
+                    var coords = RustCanvasCoordinates.Instance;
+                    var r = coords.GetElementCanvasRect(primary, doc, canvasWidth, canvasHeight);
+                    CanvasMeasurementService.DrawDimensionHud(r, viewportRect, pan, zoom);
+                }
+            }
         }
     }
 }

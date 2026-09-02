@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -61,6 +62,77 @@ namespace RustCUIBuilder.Editor.Windows
             var window = GetWindow<RustCuiBuilderWindow>("Rust CUI Builder", true);
             window.minSize = new Vector2(960, 600);
             window.Show();
+        }
+
+        [MenuItem("Rust/Diagnostics/Run Canvas Tooling Diagnostics", priority = 200)]
+        public static void RunCanvasToolingDiagnostics()
+        {
+            const float CanvasW = 1920f;
+            const float CanvasH = 1080f;
+            var coords = RustCanvasCoordinates.Instance;
+
+            // 1. Alignment Test
+            var doc1 = new CuiDocument();
+            var e1 = CreateTestElement("E1", 100, 100, 200, 100, CanvasW, CanvasH);
+            var e2 = CreateTestElement("E2", 300, 250, 150, 80, CanvasW, CanvasH);
+            doc1.AddElement(e1); doc1.AddElement(e2);
+            RustCUIBuilder.Editor.Canvas.Services.CanvasAlignmentService.AlignLeft(new List<CuiElementNode> { e1, e2 }, doc1, CanvasW, CanvasH, RustCUIBuilder.Editor.Canvas.Services.AlignmentTarget.SelectionBounds);
+            if (Mathf.Abs(coords.GetElementCanvasRect(e1, doc1, CanvasW, CanvasH).xMin - 100f) > 0.5f ||
+                Mathf.Abs(coords.GetElementCanvasRect(e2, doc1, CanvasW, CanvasH).xMin - 100f) > 0.5f)
+                throw new Exception("AlignLeft test failed");
+
+            // 2. Equal Spacing Test
+            var doc2 = new CuiDocument();
+            var se1 = CreateTestElement("SE1", 0, 100, 100, 50, CanvasW, CanvasH);
+            var se2 = CreateTestElement("SE2", 150, 100, 100, 50, CanvasW, CanvasH);
+            var se3 = CreateTestElement("SE3", 500, 100, 100, 50, CanvasW, CanvasH);
+            doc2.AddElement(se1); doc2.AddElement(se2); doc2.AddElement(se3);
+            RustCUIBuilder.Editor.Canvas.Services.CanvasDistributionService.EqualHorizontalSpacing(new List<CuiElementNode> { se1, se2, se3 }, doc2, CanvasW, CanvasH);
+            var r1 = coords.GetElementCanvasRect(se1, doc2, CanvasW, CanvasH);
+            var r2 = coords.GetElementCanvasRect(se2, doc2, CanvasW, CanvasH);
+            var r3 = coords.GetElementCanvasRect(se3, doc2, CanvasW, CanvasH);
+            if (Mathf.Abs(r2.xMin - 250f) > 0.5f || Mathf.Abs(r3.xMin - 500f) > 0.5f)
+                throw new Exception("EqualHorizontalSpacing test failed");
+
+            // 3. Group / Ungroup Test
+            var doc3 = new CuiDocument();
+            var ge1 = CreateTestElement("GE1", 200, 300, 100, 50, CanvasW, CanvasH);
+            var ge2 = CreateTestElement("GE2", 350, 320, 120, 60, CanvasW, CanvasH);
+            doc3.AddElement(ge1); doc3.AddElement(ge2);
+            doc3.Select(ge1.Id, true); doc3.Select(ge2.Id, true);
+            var g = RustCUIBuilder.Editor.Canvas.Services.CanvasHierarchyService.GroupSelection(doc3, CanvasW, CanvasH);
+            if (g == null || ge1.Parent != g.Name) throw new Exception("GroupSelection test failed");
+            RustCUIBuilder.Editor.Canvas.Services.CanvasHierarchyService.UngroupSelection(doc3, CanvasW, CanvasH);
+            if (ge1.Parent != "Overlay") throw new Exception("UngroupSelection test failed");
+
+            // 4. Layout Center in Parent Test
+            var doc4 = new CuiDocument();
+            var parent = CreateTestElement("Parent", 200, 200, 600, 400, CanvasW, CanvasH);
+            var child = CreateTestElement("Child", 0, 0, 200, 100, CanvasW, CanvasH);
+            child.Parent = "Parent";
+            doc4.AddElement(parent); doc4.AddElement(child);
+            RustCUIBuilder.Editor.Canvas.Services.CanvasLayoutService.CenterInParent(new List<CuiElementNode> { child }, doc4, CanvasW, CanvasH);
+            var pRect = coords.GetElementCanvasRect(parent, doc4, CanvasW, CanvasH);
+            var cRect = coords.GetElementCanvasRect(child, doc4, CanvasW, CanvasH);
+            if (Mathf.Abs(pRect.center.x - cRect.center.x) > 0.5f || Mathf.Abs(pRect.center.y - cRect.center.y) > 0.5f)
+                throw new Exception("CenterInParent test failed");
+
+            // 5. Clipboard Duplicate Test
+            var doc5 = new CuiDocument();
+            var orig = CreateTestElement("Orig", 100, 100, 200, 80, CanvasW, CanvasH);
+            doc5.AddElement(orig); doc5.Select(orig.Id);
+            var dups = RustCUIBuilder.Editor.Canvas.Services.CanvasClipboardService.Duplicate(new List<CuiElementNode> { orig }, doc5, CanvasW, CanvasH);
+            if (dups.Count != 1 || dups[0].Name == orig.Name) throw new Exception("Duplicate test failed");
+
+            Debug.Log("[CanvasToolingDiagnostics] ALL 5 CORE CANVAS SERVICES (Alignment, Spacing, Grouping, Layout, Clipboard) PASSED 100%!");
+        }
+
+        private static CuiElementNode CreateTestElement(string name, float x, float y, float w, float h, float canvasW, float canvasH)
+        {
+            var elem = new CuiElementNode(name, "Overlay");
+            elem.Components.Add(new CuiRectTransformComponent());
+            RustCanvasCoordinates.Instance.ApplyNewCanvasRectToElementOffsets(new Rect(x, y, w, h), elem, null, canvasW, canvasH);
+            return elem;
         }
 
         private void OnEnable()

@@ -6,6 +6,7 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 using RustCUIBuilder.Runtime.Discovery;
+using RustCUIBuilder.Editor.Windows;
 
 namespace RustCUIBuilder.Editor.Diagnostics
 {
@@ -43,6 +44,7 @@ namespace RustCUIBuilder.Editor.Diagnostics
         private void OnEnable()
         {
             RunDiagnostic();
+            RustCuiBuilderWindow.RunCanvasToolingDiagnostics();
         }
 
         private void OnGUI()
@@ -58,6 +60,10 @@ namespace RustCUIBuilder.Editor.Diagnostics
             if (GUILayout.Button("▶ Run Full AssetBundle Diagnostic", GUILayout.Height(30)))
             {
                 RunDiagnostic();
+            }
+            if (GUILayout.Button("🧪 Run Canvas Tooling Tests", GUILayout.Height(30), GUILayout.Width(200)))
+            {
+                RustCuiBuilderWindow.RunCanvasToolingDiagnostics();
             }
             if (GUILayout.Button("📋 Copy Report to Clipboard", GUILayout.Height(30), GUILayout.Width(180)))
             {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 
 namespace RustCUIBuilder.Runtime.Discovery
@@ -10,12 +11,13 @@ namespace RustCUIBuilder.Runtime.Discovery
         All,
         UiSprites,
         GameItems,
-        Materials
+        Materials,
+        Fonts
     }
 
     /// <summary>
-    /// Discovers, indexes, and caches Rust assets including 1,723 item icons from Bundles/items,
-    /// authentic sprites via RustBundleManager, materials, fonts, and procedural icon fallbacks.
+    /// Discovers, indexes, and caches authentic Rust assets from Steam AssetBundles via RustBundleManager,
+    /// including 1,723 authentic item icons, UI sprites & icons, verified materials, and fonts.
     /// </summary>
     public static class RustAssetDiscovery
     {
@@ -46,7 +48,12 @@ namespace RustCUIBuilder.Runtime.Discovery
             "RobotoCondensed-Regular.ttf",
             "DroidSansMono.ttf",
             "PermanentMarker.ttf",
-            "dsk.ttf"
+            "dsk.ttf",
+            "LCD.ttf",
+            "poxel.otf",
+            "PressStart2P-Regular.ttf",
+            "RobotoMono-Bold.ttf",
+            "RobotoMono-Regular.ttf"
         };
 
         public static readonly string[] VerifiedMaterials = new[]
@@ -157,47 +164,62 @@ namespace RustCUIBuilder.Runtime.Discovery
             AllUiSpritesList.Clear();
             LoadedSpriteCache.Clear();
 
-            // 1. Initialize Rust Bundle Manager
+            // 1. Initialize Rust Bundle Manager from Steam Rust Installation
             RustBundleManager.Initialize();
 
-            // 2. Initialize UI Sprites (Authentic bundle load first, procedural fallback second)
-            foreach (var spritePath in VerifiedSprites)
-            {
-                string filename = Path.GetFileNameWithoutExtension(spritePath);
-                string category = spritePath.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
+            var addedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                var authenticSprite = RustBundleManager.LoadSprite(spritePath);
-                if (authenticSprite != null)
+            // 2. Discover Authentic UI Sprites & Icons from AssetBundles
+            if (RustBundleManager.IsInitialized && RustBundleManager.IndexedAssets != null)
+            {
+                var bundleSprites = RustBundleManager.IndexedAssets
+                    .Where(a => a.TypeName == "Sprite" && (
+                        a.AssetPath.StartsWith("assets/icons/", StringComparison.OrdinalIgnoreCase) ||
+                        a.AssetPath.StartsWith("assets/content/ui/", StringComparison.OrdinalIgnoreCase) ||
+                        a.AssetPath.StartsWith("assets/prefabs/", StringComparison.OrdinalIgnoreCase) ||
+                        a.AssetPath.StartsWith("assets/plugins/", StringComparison.OrdinalIgnoreCase)
+                    ))
+                    .ToList();
+
+                foreach (var asset in bundleSprites)
                 {
-                    AllUiSpritesList.Add(new UiSpriteMetadata
+                    if (addedPaths.Add(asset.AssetPath))
                     {
-                        path = spritePath,
-                        name = filename,
-                        category = category,
-                        sprite = authenticSprite,
-                        isBundleLoaded = true
-                    });
-                    LoadedSpriteCache[spritePath] = authenticSprite;
-                }
-                else
-                {
-                    var spriteObj = GenerateOrLoadSprite(spritePath, filename);
-                    AllUiSpritesList.Add(new UiSpriteMetadata
-                    {
-                        path = spritePath,
-                        name = filename,
-                        category = category,
-                        sprite = spriteObj,
-                        isBundleLoaded = false
-                    });
-                    if (spriteObj != null)
-                    {
-                        LoadedSpriteCache[spritePath] = spriteObj;
+                        string filename = Path.GetFileNameWithoutExtension(asset.AssetPath);
+                        string category = asset.AssetPath.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
+
+                        AllUiSpritesList.Add(new UiSpriteMetadata
+                        {
+                            path = asset.AssetPath,
+                            name = filename,
+                            category = category,
+                            sprite = null, // Lazy loaded on demand
+                            isBundleLoaded = true
+                        });
                     }
                 }
             }
 
-            // 3. Discover Item Icons from Steam Rust installation
+            // 3. Fallback / Standard Verified Sprites
+            foreach (var spritePath in VerifiedSprites)
+            {
+                if (addedPaths.Add(spritePath))
+                {
+                    string filename = Path.GetFileNameWithoutExtension(spritePath);
+                    string category = spritePath.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
+
+                    AllUiSpritesList.Add(new UiSpriteMetadata
+                    {
+                        path = spritePath,
+                        name = filename,
+                        category = category,
+                        sprite = null,
+                        isBundleLoaded = false
+                    });
+                }
+            }
+
+            // 4. Discover Item Icons from Steam Rust installation
             var install = SteamDiscovery.DiscoverRustInstallation();
             if (install.IsValid && !string.IsNullOrEmpty(install.ItemsBundlePath) && Directory.Exists(install.ItemsBundlePath))
             {
@@ -227,7 +249,7 @@ namespace RustCUIBuilder.Runtime.Discovery
             }
 
             IsIndexed = true;
-            Debug.Log($"[RustAssetDiscovery] Discovery ready: {AllItemsList.Count} items indexed, {AllUiSpritesList.Count} UI sprites ready.");
+            Debug.Log($"[RustAssetDiscovery] Discovery ready: {AllItemsList.Count} items indexed, {AllUiSpritesList.Count} authentic UI sprites ready.");
         }
 
         public static ItemAssetMetadata FindItemByName(string name)
@@ -344,7 +366,7 @@ namespace RustCUIBuilder.Runtime.Discovery
 
             string lower = name.ToLowerInvariant();
 
-            // 1. UI Backgrounds (Must be pure white with borders so Color tint works properly)
+            // UI Backgrounds
             if (lower.Contains("tile") || lower.Contains("background"))
             {
                 for (int y = 0; y < size; y++)
@@ -412,7 +434,6 @@ namespace RustCUIBuilder.Runtime.Discovery
                     for (int x = 0; x < size; x++) colors[y * size + x] = new Color(1f, 1f, 1f, a);
                 }
             }
-            // 2. Verified Icons
             else if (lower.Contains("check"))
             {
                 DrawThickLine(colors, size, new Vector2(14, 32), new Vector2(26, 18), 5, new Color(0.25f, 0.9f, 0.35f, 1f));
@@ -423,120 +444,8 @@ namespace RustCUIBuilder.Runtime.Discovery
                 DrawThickLine(colors, size, new Vector2(16, 16), new Vector2(48, 48), 5, new Color(0.95f, 0.25f, 0.25f, 1f));
                 DrawThickLine(colors, size, new Vector2(16, 48), new Vector2(48, 16), 5, new Color(0.95f, 0.25f, 0.25f, 1f));
             }
-            else if (lower.Contains("heart"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(24, 38), 12, new Color(0.95f, 0.2f, 0.3f, 1f));
-                DrawFilledCircle(colors, size, new Vector2(40, 38), 12, new Color(0.95f, 0.2f, 0.3f, 1f));
-                DrawThickLine(colors, size, new Vector2(14, 34), new Vector2(32, 12), 12, new Color(0.95f, 0.2f, 0.3f, 1f));
-                DrawThickLine(colors, size, new Vector2(50, 34), new Vector2(32, 12), 12, new Color(0.95f, 0.2f, 0.3f, 1f));
-            }
-            else if (lower.Contains("star"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 14, new Color(1f, 0.85f, 0.2f, 1f));
-                DrawThickLine(colors, size, new Vector2(32, 54), new Vector2(32, 10), 6, new Color(1f, 0.85f, 0.2f, 1f));
-                DrawThickLine(colors, size, new Vector2(10, 38), new Vector2(54, 38), 6, new Color(1f, 0.85f, 0.2f, 1f));
-            }
-            else if (lower.Contains("skull") || lower.Contains("poison"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 36), 16, Color.white);
-                DrawFilledRect(colors, size, new Rect(24, 16, 16, 12), Color.white);
-                DrawFilledCircle(colors, size, new Vector2(26, 36), 4, Color.black);
-                DrawFilledCircle(colors, size, new Vector2(38, 36), 4, Color.black);
-            }
-            else if (lower.Contains("lock"))
-            {
-                bool isOpen = lower.Contains("unlock");
-                DrawFilledRect(colors, size, new Rect(18, 14, 28, 22), new Color(0.95f, 0.75f, 0.25f, 1f));
-                Vector2 shackleTop = isOpen ? new Vector2(32, 48) : new Vector2(32, 42);
-                DrawThickLine(colors, size, new Vector2(24, 36), shackleTop, 4, Color.white);
-                DrawThickLine(colors, size, shackleTop, new Vector2(isOpen ? 46 : 40, isOpen ? 42 : 36), 4, Color.white);
-            }
-            else if (lower.Contains("radiation"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 6, new Color(1f, 0.85f, 0.1f, 1f));
-                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(32, 52), 6, new Color(1f, 0.85f, 0.1f, 1f));
-                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(14, 20), 6, new Color(1f, 0.85f, 0.1f, 1f));
-                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(50, 20), 6, new Color(1f, 0.85f, 0.1f, 1f));
-            }
-            else if (lower.Contains("bleeding") || lower.Contains("wet") || lower.Contains("thirst"))
-            {
-                Color dropColor = lower.Contains("bleeding") ? new Color(0.9f, 0.15f, 0.15f, 1f) : new Color(0.2f, 0.65f, 1f, 1f);
-                DrawFilledCircle(colors, size, new Vector2(32, 24), 14, dropColor);
-                DrawThickLine(colors, size, new Vector2(32, 50), new Vector2(32, 24), 10, dropColor);
-            }
-            else if (lower.Contains("shield"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 36), 18, new Color(0.3f, 0.6f, 0.9f, 1f));
-                DrawThickLine(colors, size, new Vector2(18, 36), new Vector2(32, 12), 8, new Color(0.3f, 0.6f, 0.9f, 1f));
-                DrawThickLine(colors, size, new Vector2(46, 36), new Vector2(32, 12), 8, new Color(0.3f, 0.6f, 0.9f, 1f));
-            }
-            else if (lower.Contains("gear"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 16, new Color(0.75f, 0.78f, 0.82f, 1f));
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 6, Color.clear);
-                DrawThickLine(colors, size, new Vector2(32, 10), new Vector2(32, 54), 6, new Color(0.75f, 0.78f, 0.82f, 1f));
-                DrawThickLine(colors, size, new Vector2(10, 32), new Vector2(54, 32), 6, new Color(0.75f, 0.78f, 0.82f, 1f));
-            }
-            else if (lower.Contains("chat"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 36), 16, Color.white);
-                DrawThickLine(colors, size, new Vector2(24, 24), new Vector2(16, 14), 6, Color.white);
-            }
-            else if (lower.Contains("coin"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 18, new Color(1f, 0.8f, 0.2f, 1f));
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 14, new Color(0.95f, 0.65f, 0.1f, 1f));
-            }
-            else if (lower.Contains("clock"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 18, Color.white);
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 14, Color.black);
-                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(32, 42), 3, Color.white);
-                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(40, 32), 3, Color.white);
-            }
-            else if (lower.Contains("fun"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 20, new Color(1f, 0.85f, 0.15f, 1f));
-                DrawFilledCircle(colors, size, new Vector2(24, 38), 3, Color.black);
-                DrawFilledCircle(colors, size, new Vector2(40, 38), 3, Color.black);
-                DrawThickLine(colors, size, new Vector2(22, 24), new Vector2(32, 18), 3, Color.black);
-                DrawThickLine(colors, size, new Vector2(32, 18), new Vector2(42, 24), 3, Color.black);
-            }
-            else if (lower.Contains("facepunch"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 20, new Color(0.9f, 0.15f, 0.15f, 1f));
-                DrawThickLine(colors, size, new Vector2(20, 24), new Vector2(44, 40), 6, Color.white);
-            }
-            else if (lower.Contains("explosion"))
-            {
-                DrawFilledCircle(colors, size, new Vector2(32, 32), 16, new Color(1f, 0.45f, 0.1f, 1f));
-                DrawThickLine(colors, size, new Vector2(12, 12), new Vector2(52, 52), 5, new Color(1f, 0.8f, 0.1f, 1f));
-                DrawThickLine(colors, size, new Vector2(12, 52), new Vector2(52, 12), 5, new Color(1f, 0.8f, 0.1f, 1f));
-            }
-            else if (lower.Contains("plus"))
-            {
-                DrawThickLine(colors, size, new Vector2(14, 32), new Vector2(50, 32), 6, Color.white);
-                DrawThickLine(colors, size, new Vector2(32, 14), new Vector2(32, 50), 6, Color.white);
-            }
-            else if (lower.Contains("minus"))
-            {
-                DrawThickLine(colors, size, new Vector2(14, 32), new Vector2(50, 32), 6, Color.white);
-            }
-            else if (lower.Contains("arrow_up"))
-            {
-                DrawThickLine(colors, size, new Vector2(32, 14), new Vector2(32, 50), 6, Color.white);
-                DrawThickLine(colors, size, new Vector2(18, 36), new Vector2(32, 50), 6, Color.white);
-                DrawThickLine(colors, size, new Vector2(46, 36), new Vector2(32, 50), 6, Color.white);
-            }
-            else if (lower.Contains("arrow_down"))
-            {
-                DrawThickLine(colors, size, new Vector2(32, 50), new Vector2(32, 14), 6, Color.white);
-                DrawThickLine(colors, size, new Vector2(18, 28), new Vector2(32, 14), 6, Color.white);
-                DrawThickLine(colors, size, new Vector2(46, 28), new Vector2(32, 14), 6, Color.white);
-            }
             else
             {
-                // Clean default icon token
                 DrawFilledCircle(colors, size, new Vector2(32, 32), 18, new Color(0.85f, 0.88f, 0.92f, 1f));
             }
 
@@ -560,19 +469,6 @@ namespace RustCUIBuilder.Runtime.Discovery
                     {
                         colors[y * size + x] = col;
                     }
-                }
-            }
-        }
-
-        private static void DrawFilledRect(Color[] colors, int size, Rect rect, Color col)
-        {
-            for (int y = (int)rect.yMin; y <= (int)rect.yMax && y < size; y++)
-            {
-                if (y < 0) continue;
-                for (int x = (int)rect.xMin; x <= (int)rect.xMax && x < size; x++)
-                {
-                    if (x < 0) continue;
-                    colors[y * size + x] = col;
                 }
             }
         }

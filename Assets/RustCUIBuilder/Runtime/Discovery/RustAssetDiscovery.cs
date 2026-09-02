@@ -15,7 +15,7 @@ namespace RustCUIBuilder.Runtime.Discovery
 
     /// <summary>
     /// Discovers, indexes, and caches Rust assets including 1,723 item icons from Bundles/items,
-    /// authentic sprites, materials, fonts, and UI layers with instant non-blocking performance.
+    /// authentic sprites, materials, fonts, and high-fidelity procedural icon fallbacks.
     /// </summary>
     public static class RustAssetDiscovery
     {
@@ -98,7 +98,6 @@ namespace RustCUIBuilder.Runtime.Discovery
             "assets/icons/fun.png",
             "assets/icons/facepunch.png",
             "assets/icons/explosion_sprite.png",
-            "assets/icons/signal_sprite.png",
             "assets/icons/radiation.png",
             "assets/icons/bleeding.png",
             "assets/icons/cold.png",
@@ -158,7 +157,7 @@ namespace RustCUIBuilder.Runtime.Discovery
             AllUiSpritesList.Clear();
             LoadedSpriteCache.Clear();
 
-            // 1. Initialize Verified UI Sprites with procedural fallbacks
+            // 1. Initialize High-Fidelity UI Sprites & Icons
             foreach (var spritePath in VerifiedSprites)
             {
                 string filename = Path.GetFileNameWithoutExtension(spritePath);
@@ -179,7 +178,7 @@ namespace RustCUIBuilder.Runtime.Discovery
                 }
             }
 
-            // 2. Discover Item Icons from Steam Rust installation (Instant file scan)
+            // 2. Discover Item Icons from Steam Rust installation
             var install = SteamDiscovery.DiscoverRustInstallation();
             if (install.IsValid && !string.IsNullOrEmpty(install.ItemsBundlePath) && Directory.Exists(install.ItemsBundlePath))
             {
@@ -209,7 +208,7 @@ namespace RustCUIBuilder.Runtime.Discovery
             }
 
             IsIndexed = true;
-            Debug.Log($"[RustAssetDiscovery] Instant discovery complete: {AllItemsList.Count} items indexed, {AllUiSpritesList.Count} UI sprites ready.");
+            Debug.Log($"[RustAssetDiscovery] Discovery ready: {AllItemsList.Count} items indexed, {AllUiSpritesList.Count} UI sprites ready.");
         }
 
         public static ItemAssetMetadata FindItemByName(string name)
@@ -314,17 +313,33 @@ namespace RustCUIBuilder.Runtime.Discovery
             int size = 64;
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
             Color[] colors = new Color[size * size];
+            FillClear(colors, size);
 
             string lower = name.ToLowerInvariant();
 
+            // 1. UI Backgrounds (Must be pure white with borders so Color tint works properly)
             if (lower.Contains("tile") || lower.Contains("background"))
             {
                 for (int y = 0; y < size; y++)
                 {
                     for (int x = 0; x < size; x++)
                     {
-                        bool isBorder = x == 0 || x == size - 1 || y == 0 || y == size - 1;
-                        colors[y * size + x] = isBorder ? new Color(0.35f, 0.38f, 0.42f, 0.95f) : new Color(0.14f, 0.16f, 0.19f, 0.92f);
+                        bool isBorder = x <= 1 || x >= size - 2 || y <= 1 || y >= size - 2;
+                        colors[y * size + x] = isBorder ? new Color(1f, 1f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.85f);
+                    }
+                }
+            }
+            else if (lower.Contains("box.shadow"))
+            {
+                float radius = size / 2f;
+                Vector2 center = new Vector2(radius, radius);
+                for (int y = 0; y < size; y++)
+                {
+                    for (int x = 0; x < size; x++)
+                    {
+                        float dist = Vector2.Distance(new Vector2(x, y), center);
+                        float a = Mathf.Clamp01(1f - (dist / radius));
+                        colors[y * size + x] = new Color(1f, 1f, 1f, a * a);
                     }
                 }
             }
@@ -342,14 +357,10 @@ namespace RustCUIBuilder.Runtime.Discovery
                             float alpha = lower.Contains("gradient") ? Mathf.Clamp01(1f - (dist / radius)) : 1f;
                             colors[y * size + x] = new Color(1f, 1f, 1f, alpha);
                         }
-                        else
-                        {
-                            colors[y * size + x] = Color.clear;
-                        }
                     }
                 }
             }
-            else if (lower.Contains("rounded") || lower.Contains("box"))
+            else if (lower.Contains("rounded"))
             {
                 float cornerRadius = 10f;
                 for (int y = 0; y < size; y++)
@@ -362,36 +373,144 @@ namespace RustCUIBuilder.Runtime.Discovery
                         if (x < cornerRadius && y > size - cornerRadius && Vector2.Distance(new Vector2(x, y), new Vector2(cornerRadius, size - cornerRadius)) > cornerRadius) inside = false;
                         if (x > size - cornerRadius && y > size - cornerRadius && Vector2.Distance(new Vector2(x, y), new Vector2(size - cornerRadius, size - cornerRadius)) > cornerRadius) inside = false;
 
-                        colors[y * size + x] = inside ? new Color(0.9f, 0.9f, 0.95f, 1f) : Color.clear;
+                        if (inside) colors[y * size + x] = Color.white;
                     }
                 }
             }
+            else if (lower.Contains("highlight"))
+            {
+                for (int y = 0; y < size; y++)
+                {
+                    float a = Mathf.Lerp(0.8f, 0.1f, (float)y / size);
+                    for (int x = 0; x < size; x++) colors[y * size + x] = new Color(1f, 1f, 1f, a);
+                }
+            }
+            // 2. Verified Icons
             else if (lower.Contains("check"))
             {
-                FillClear(colors, size);
-                DrawThickLine(colors, size, new Vector2(16, 32), new Vector2(28, 18), 4, Color.green);
-                DrawThickLine(colors, size, new Vector2(28, 18), new Vector2(50, 48), 4, Color.green);
+                DrawThickLine(colors, size, new Vector2(14, 32), new Vector2(26, 18), 5, new Color(0.25f, 0.9f, 0.35f, 1f));
+                DrawThickLine(colors, size, new Vector2(26, 18), new Vector2(52, 48), 5, new Color(0.25f, 0.9f, 0.35f, 1f));
             }
             else if (lower.Contains("close") || lower.Contains("cross"))
             {
-                FillClear(colors, size);
-                DrawThickLine(colors, size, new Vector2(18, 18), new Vector2(46, 46), 4, new Color(0.9f, 0.25f, 0.25f, 1f));
-                DrawThickLine(colors, size, new Vector2(18, 46), new Vector2(46, 18), 4, new Color(0.9f, 0.25f, 0.25f, 1f));
+                DrawThickLine(colors, size, new Vector2(16, 16), new Vector2(48, 48), 5, new Color(0.95f, 0.25f, 0.25f, 1f));
+                DrawThickLine(colors, size, new Vector2(16, 48), new Vector2(48, 16), 5, new Color(0.95f, 0.25f, 0.25f, 1f));
+            }
+            else if (lower.Contains("heart"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(24, 38), 12, new Color(0.95f, 0.2f, 0.3f, 1f));
+                DrawFilledCircle(colors, size, new Vector2(40, 38), 12, new Color(0.95f, 0.2f, 0.3f, 1f));
+                DrawThickLine(colors, size, new Vector2(14, 34), new Vector2(32, 12), 12, new Color(0.95f, 0.2f, 0.3f, 1f));
+                DrawThickLine(colors, size, new Vector2(50, 34), new Vector2(32, 12), 12, new Color(0.95f, 0.2f, 0.3f, 1f));
+            }
+            else if (lower.Contains("star"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 14, new Color(1f, 0.85f, 0.2f, 1f));
+                DrawThickLine(colors, size, new Vector2(32, 54), new Vector2(32, 10), 6, new Color(1f, 0.85f, 0.2f, 1f));
+                DrawThickLine(colors, size, new Vector2(10, 38), new Vector2(54, 38), 6, new Color(1f, 0.85f, 0.2f, 1f));
+            }
+            else if (lower.Contains("skull") || lower.Contains("poison"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 36), 16, Color.white);
+                DrawFilledRect(colors, size, new Rect(24, 16, 16, 12), Color.white);
+                DrawFilledCircle(colors, size, new Vector2(26, 36), 4, Color.black);
+                DrawFilledCircle(colors, size, new Vector2(38, 36), 4, Color.black);
+            }
+            else if (lower.Contains("lock"))
+            {
+                bool isOpen = lower.Contains("unlock");
+                DrawFilledRect(colors, size, new Rect(18, 14, 28, 22), new Color(0.95f, 0.75f, 0.25f, 1f));
+                Vector2 shackleTop = isOpen ? new Vector2(32, 48) : new Vector2(32, 42);
+                DrawThickLine(colors, size, new Vector2(24, 36), shackleTop, 4, Color.white);
+                DrawThickLine(colors, size, shackleTop, new Vector2(isOpen ? 46 : 40, isOpen ? 42 : 36), 4, Color.white);
+            }
+            else if (lower.Contains("radiation"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 6, new Color(1f, 0.85f, 0.1f, 1f));
+                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(32, 52), 6, new Color(1f, 0.85f, 0.1f, 1f));
+                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(14, 20), 6, new Color(1f, 0.85f, 0.1f, 1f));
+                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(50, 20), 6, new Color(1f, 0.85f, 0.1f, 1f));
+            }
+            else if (lower.Contains("bleeding") || lower.Contains("wet") || lower.Contains("thirst"))
+            {
+                Color dropColor = lower.Contains("bleeding") ? new Color(0.9f, 0.15f, 0.15f, 1f) : new Color(0.2f, 0.65f, 1f, 1f);
+                DrawFilledCircle(colors, size, new Vector2(32, 24), 14, dropColor);
+                DrawThickLine(colors, size, new Vector2(32, 50), new Vector2(32, 24), 10, dropColor);
+            }
+            else if (lower.Contains("shield"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 36), 18, new Color(0.3f, 0.6f, 0.9f, 1f));
+                DrawThickLine(colors, size, new Vector2(18, 36), new Vector2(32, 12), 8, new Color(0.3f, 0.6f, 0.9f, 1f));
+                DrawThickLine(colors, size, new Vector2(46, 36), new Vector2(32, 12), 8, new Color(0.3f, 0.6f, 0.9f, 1f));
+            }
+            else if (lower.Contains("gear"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 16, new Color(0.75f, 0.78f, 0.82f, 1f));
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 6, Color.clear);
+                DrawThickLine(colors, size, new Vector2(32, 10), new Vector2(32, 54), 6, new Color(0.75f, 0.78f, 0.82f, 1f));
+                DrawThickLine(colors, size, new Vector2(10, 32), new Vector2(54, 32), 6, new Color(0.75f, 0.78f, 0.82f, 1f));
+            }
+            else if (lower.Contains("chat"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 36), 16, Color.white);
+                DrawThickLine(colors, size, new Vector2(24, 24), new Vector2(16, 14), 6, Color.white);
+            }
+            else if (lower.Contains("coin"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 18, new Color(1f, 0.8f, 0.2f, 1f));
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 14, new Color(0.95f, 0.65f, 0.1f, 1f));
+            }
+            else if (lower.Contains("clock"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 18, Color.white);
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 14, Color.black);
+                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(32, 42), 3, Color.white);
+                DrawThickLine(colors, size, new Vector2(32, 32), new Vector2(40, 32), 3, Color.white);
+            }
+            else if (lower.Contains("fun"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 20, new Color(1f, 0.85f, 0.15f, 1f));
+                DrawFilledCircle(colors, size, new Vector2(24, 38), 3, Color.black);
+                DrawFilledCircle(colors, size, new Vector2(40, 38), 3, Color.black);
+                DrawThickLine(colors, size, new Vector2(22, 24), new Vector2(32, 18), 3, Color.black);
+                DrawThickLine(colors, size, new Vector2(32, 18), new Vector2(42, 24), 3, Color.black);
+            }
+            else if (lower.Contains("facepunch"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 20, new Color(0.9f, 0.15f, 0.15f, 1f));
+                DrawThickLine(colors, size, new Vector2(20, 24), new Vector2(44, 40), 6, Color.white);
+            }
+            else if (lower.Contains("explosion"))
+            {
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 16, new Color(1f, 0.45f, 0.1f, 1f));
+                DrawThickLine(colors, size, new Vector2(12, 12), new Vector2(52, 52), 5, new Color(1f, 0.8f, 0.1f, 1f));
+                DrawThickLine(colors, size, new Vector2(12, 52), new Vector2(52, 12), 5, new Color(1f, 0.8f, 0.1f, 1f));
             }
             else if (lower.Contains("plus"))
             {
-                FillClear(colors, size);
-                DrawThickLine(colors, size, new Vector2(16, 32), new Vector2(48, 32), 4, Color.white);
-                DrawThickLine(colors, size, new Vector2(32, 16), new Vector2(32, 48), 4, Color.white);
+                DrawThickLine(colors, size, new Vector2(14, 32), new Vector2(50, 32), 6, Color.white);
+                DrawThickLine(colors, size, new Vector2(32, 14), new Vector2(32, 50), 6, Color.white);
             }
             else if (lower.Contains("minus"))
             {
-                FillClear(colors, size);
-                DrawThickLine(colors, size, new Vector2(16, 32), new Vector2(48, 32), 4, Color.white);
+                DrawThickLine(colors, size, new Vector2(14, 32), new Vector2(50, 32), 6, Color.white);
+            }
+            else if (lower.Contains("arrow_up"))
+            {
+                DrawThickLine(colors, size, new Vector2(32, 14), new Vector2(32, 50), 6, Color.white);
+                DrawThickLine(colors, size, new Vector2(18, 36), new Vector2(32, 50), 6, Color.white);
+                DrawThickLine(colors, size, new Vector2(46, 36), new Vector2(32, 50), 6, Color.white);
+            }
+            else if (lower.Contains("arrow_down"))
+            {
+                DrawThickLine(colors, size, new Vector2(32, 50), new Vector2(32, 14), 6, Color.white);
+                DrawThickLine(colors, size, new Vector2(18, 28), new Vector2(32, 14), 6, Color.white);
+                DrawThickLine(colors, size, new Vector2(46, 28), new Vector2(32, 14), 6, Color.white);
             }
             else
             {
-                for (int i = 0; i < colors.Length; i++) colors[i] = Color.white;
+                // Clean default icon token
+                DrawFilledCircle(colors, size, new Vector2(32, 32), 18, new Color(0.85f, 0.88f, 0.92f, 1f));
             }
 
             tex.SetPixels(colors);
@@ -402,6 +521,33 @@ namespace RustCUIBuilder.Runtime.Discovery
         private static void FillClear(Color[] colors, int size)
         {
             for (int i = 0; i < colors.Length; i++) colors[i] = Color.clear;
+        }
+
+        private static void DrawFilledCircle(Color[] colors, int size, Vector2 center, float radius, Color col)
+        {
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    if (Vector2.Distance(new Vector2(x, y), center) <= radius)
+                    {
+                        colors[y * size + x] = col;
+                    }
+                }
+            }
+        }
+
+        private static void DrawFilledRect(Color[] colors, int size, Rect rect, Color col)
+        {
+            for (int y = (int)rect.yMin; y <= (int)rect.yMax && y < size; y++)
+            {
+                if (y < 0) continue;
+                for (int x = (int)rect.xMin; x <= (int)rect.xMax && x < size; x++)
+                {
+                    if (x < 0) continue;
+                    colors[y * size + x] = col;
+                }
+            }
         }
 
         private static void DrawThickLine(Color[] colors, int size, Vector2 p1, Vector2 p2, float thickness, Color col)

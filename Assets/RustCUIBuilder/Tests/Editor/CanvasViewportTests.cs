@@ -227,7 +227,6 @@ namespace RustCUIBuilder.Tests.Editor
         public void Test_12_ResponsiveWindowResize_AdaptsViewportDimensions()
         {
             float windowW1 = 1280f;
-            float windowH1 = 720f;
             float leftW1 = Mathf.Clamp(windowW1 * 0.18f, 220f, 280f);
             float rightW1 = Mathf.Clamp(windowW1 * 0.24f, 280f, 380f);
             float centerW1 = windowW1 - leftW1 - rightW1;

@@ -169,16 +169,15 @@ namespace RustCUIBuilder.Runtime.Discovery
 
             var addedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // 2. Discover Authentic UI Sprites & Icons from AssetBundles
+            // 2. Discover Authentic UI Sprites & Icons from AssetBundles (Strict UI Filter: only UI elements and icons, ignore 3D prefab textures/skins)
             if (RustBundleManager.IsInitialized && RustBundleManager.IndexedAssets != null)
             {
                 var bundleSprites = RustBundleManager.IndexedAssets
                     .Where(a => a.TypeName == "Sprite" && (
-                        a.AssetPath.StartsWith("assets/icons/", StringComparison.OrdinalIgnoreCase) ||
-                        a.AssetPath.StartsWith("assets/content/ui/", StringComparison.OrdinalIgnoreCase) ||
-                        a.AssetPath.StartsWith("assets/prefabs/", StringComparison.OrdinalIgnoreCase) ||
-                        a.AssetPath.StartsWith("assets/plugins/", StringComparison.OrdinalIgnoreCase)
-                    ))
+                        (a.AssetPath.StartsWith("assets/icons/", StringComparison.OrdinalIgnoreCase) && !a.AssetPath.Contains("/prefabs/")) ||
+                        (a.AssetPath.StartsWith("assets/content/ui/", StringComparison.OrdinalIgnoreCase) && !a.AssetPath.Contains("/fonts/") && !a.AssetPath.Contains("/prefabs/")) ||
+                        (a.AssetPath.StartsWith("assets/plugins/rust.ui/icons/", StringComparison.OrdinalIgnoreCase))
+                    ) && !a.AssetPath.Contains("/materials/") && !a.AssetPath.Contains("/models/") && !a.AssetPath.Contains("/monuments/"))
                     .ToList();
 
                 foreach (var asset in bundleSprites)

@@ -23,6 +23,7 @@ namespace RustCUIBuilder.Runtime.Discovery
 
         private static AssetBundle _rootBundle;
         private static AssetBundleManifest _manifest;
+        private static string _bundlesBasePath;
 
         private static readonly Dictionary<string, AssetBundle> LoadedBundles = new Dictionary<string, AssetBundle>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, string> AssetToBundleMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -37,7 +38,8 @@ namespace RustCUIBuilder.Runtime.Discovery
 
         public static bool Initialize(string customRustPath = null)
         {
-            if (IsInitialized && _manifest != null) return true;
+            if (IsInitialized && _manifest != null && LoadedBundles.Count > 0)
+                return true;
 
             string rustRoot = customRustPath;
             if (string.IsNullOrEmpty(rustRoot))
@@ -47,8 +49,8 @@ namespace RustCUIBuilder.Runtime.Discovery
                 rustRoot = install.RustRootPath;
             }
 
-            string bundlesBase = Path.Combine(rustRoot, "Bundles");
-            string rootBundlePath = Path.Combine(bundlesBase, "Bundles");
+            _bundlesBasePath = Path.Combine(rustRoot, "Bundles");
+            string rootBundlePath = Path.Combine(_bundlesBasePath, "Bundles");
 
             if (!File.Exists(rootBundlePath))
             {
@@ -58,9 +60,12 @@ namespace RustCUIBuilder.Runtime.Discovery
 
             try
             {
-                // Unload all stale editor asset bundle handles
+                // Clean unload of any stale editor bundle handles from prior domain reloads
                 AssetBundle.UnloadAllAssetBundles(false);
                 LoadedBundles.Clear();
+                SpriteCache.Clear();
+                MaterialCache.Clear();
+                FontCache.Clear();
 
                 _rootBundle = AssetBundle.LoadFromFile(rootBundlePath);
 
@@ -80,7 +85,7 @@ namespace RustCUIBuilder.Runtime.Discovery
                     return false;
                 }
 
-                RebuildIndex(bundlesBase);
+                RebuildIndex(_bundlesBasePath);
                 IsInitialized = true;
                 Debug.Log($"[RustBundleManager] Initialized successfully: {LoadedBundles.Count} bundles loaded, {AllIndexedAssets.Count} assets indexed.");
                 return true;
@@ -118,6 +123,7 @@ namespace RustCUIBuilder.Runtime.Discovery
             {
                 try
                 {
+                    if (pair.Value == null) continue;
                     string[] assetNames = pair.Value.GetAllAssetNames();
                     foreach (var aPath in assetNames)
                     {
@@ -151,7 +157,7 @@ namespace RustCUIBuilder.Runtime.Discovery
                 string[] dependencies = _manifest.GetAllDependencies(bundleName);
                 foreach (var dep in dependencies)
                 {
-                    if (!LoadedBundles.ContainsKey(dep))
+                    if (!LoadedBundles.ContainsKey(dep) || LoadedBundles[dep] == null)
                     {
                         string depPath = Path.Combine(bundlesBase, dep.Replace('/', Path.DirectorySeparatorChar));
                         if (File.Exists(depPath))
@@ -179,10 +185,7 @@ namespace RustCUIBuilder.Runtime.Discovery
                         return ab;
                     }
                 }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"[RustBundleManager] Failed to load {bundleName}: {ex.Message}");
-                }
+                catch { }
             }
 
             return null;
@@ -199,27 +202,27 @@ namespace RustCUIBuilder.Runtime.Discovery
 
             if (AssetToBundleMap.TryGetValue(assetPath, out var bName) && LoadedBundles.TryGetValue(bName, out var bundle))
             {
-                try
+                if (bundle != null)
                 {
-                    var sprite = bundle.LoadAsset<Sprite>(assetPath);
-                    if (sprite != null)
+                    try
                     {
-                        SpriteCache[assetPath] = sprite;
-                        return sprite;
-                    }
+                        var sprite = bundle.LoadAsset<Sprite>(assetPath);
+                        if (sprite != null)
+                        {
+                            SpriteCache[assetPath] = sprite;
+                            return sprite;
+                        }
 
-                    // Fallback: Texture2D to Sprite
-                    var tex = bundle.LoadAsset<Texture2D>(assetPath);
-                    if (tex != null)
-                    {
-                        var created = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
-                        SpriteCache[assetPath] = created;
-                        return created;
+                        // Fallback: Texture2D to Sprite
+                        var tex = bundle.LoadAsset<Texture2D>(assetPath);
+                        if (tex != null)
+                        {
+                            var created = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+                            SpriteCache[assetPath] = created;
+                            return created;
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"[RustBundleManager] Error loading sprite {assetPath}: {ex.Message}");
+                    catch { }
                 }
             }
 
@@ -237,16 +240,19 @@ namespace RustCUIBuilder.Runtime.Discovery
 
             if (AssetToBundleMap.TryGetValue(assetPath, out var bName) && LoadedBundles.TryGetValue(bName, out var bundle))
             {
-                try
+                if (bundle != null)
                 {
-                    var mat = bundle.LoadAsset<Material>(assetPath);
-                    if (mat != null)
+                    try
                     {
-                        MaterialCache[assetPath] = mat;
-                        return mat;
+                        var mat = bundle.LoadAsset<Material>(assetPath);
+                        if (mat != null)
+                        {
+                            MaterialCache[assetPath] = mat;
+                            return mat;
+                        }
                     }
+                    catch { }
                 }
-                catch { }
             }
 
             return null;
@@ -263,16 +269,19 @@ namespace RustCUIBuilder.Runtime.Discovery
 
             if (AssetToBundleMap.TryGetValue(assetPath, out var bName) && LoadedBundles.TryGetValue(bName, out var bundle))
             {
-                try
+                if (bundle != null)
                 {
-                    var font = bundle.LoadAsset<Font>(assetPath);
-                    if (font != null)
+                    try
                     {
-                        FontCache[assetPath] = font;
-                        return font;
+                        var font = bundle.LoadAsset<Font>(assetPath);
+                        if (font != null)
+                        {
+                            FontCache[assetPath] = font;
+                            return font;
+                        }
                     }
+                    catch { }
                 }
-                catch { }
             }
 
             return null;

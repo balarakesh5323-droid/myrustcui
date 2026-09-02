@@ -8,14 +8,14 @@ namespace RustCUIBuilder.Runtime.Discovery
     public enum RustAssetType
     {
         All,
-        ItemIcon,
-        UiSprite,
-        Material
+        UiSprites,
+        GameItems,
+        Materials
     }
 
     /// <summary>
     /// Discovers, indexes, and caches Rust assets including 2,800+ item icons from Bundles/items,
-    /// verified UI sprites, procedural sprite fallbacks, materials, fonts, and UI layers.
+    /// authentic extracted sprites from Rust AssetBundles, materials, fonts, and UI layers.
     /// </summary>
     public static class RustAssetDiscovery
     {
@@ -36,6 +36,7 @@ namespace RustCUIBuilder.Runtime.Discovery
             public string name;
             public string category;
             public Sprite sprite;
+            public bool isBundleLoaded;
         }
 
         public static readonly string[] VerifiedFonts = new[]
@@ -43,7 +44,8 @@ namespace RustCUIBuilder.Runtime.Discovery
             "RobotoCondensed-Bold.ttf",
             "RobotoCondensed-Regular.ttf",
             "DroidSansMono.ttf",
-            "PermanentMarker.ttf"
+            "PermanentMarker.ttf",
+            "dsk.ttf"
         };
 
         public static readonly string[] VerifiedMaterials = new[]
@@ -153,27 +155,53 @@ namespace RustCUIBuilder.Runtime.Discovery
             AllUiSpritesList.Clear();
             LoadedSpriteCache.Clear();
 
-            // 1. Initialize all Verified UI Sprites & procedural textures
-            foreach (var spritePath in VerifiedSprites)
-            {
-                string filename = Path.GetFileNameWithoutExtension(spritePath);
-                string category = spritePath.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
+            // 1. Attempt to load live AssetBundles from Rust installation
+            RustBundleLoader.LoadBundles();
 
-                var spriteObj = GenerateOrLoadSprite(spritePath, filename);
+            // 2. Add all sprites extracted from Rust AssetBundles
+            foreach (var pair in RustBundleLoader.Sprites)
+            {
+                string filename = Path.GetFileNameWithoutExtension(pair.Key);
+                string cat = pair.Key.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
+
                 AllUiSpritesList.Add(new UiSpriteMetadata
                 {
-                    path = spritePath,
+                    path = pair.Key,
                     name = filename,
-                    category = category,
-                    sprite = spriteObj
+                    category = cat,
+                    sprite = pair.Value,
+                    isBundleLoaded = true
                 });
-                if (spriteObj != null)
+
+                LoadedSpriteCache[pair.Key] = pair.Value;
+                LoadedSpriteCache[filename] = pair.Value;
+            }
+
+            // 3. Add Verified UI Sprites with procedural fallbacks for any missing entries
+            foreach (var spritePath in VerifiedSprites)
+            {
+                if (!LoadedSpriteCache.ContainsKey(spritePath))
                 {
-                    LoadedSpriteCache[spritePath] = spriteObj;
+                    string filename = Path.GetFileNameWithoutExtension(spritePath);
+                    string category = spritePath.StartsWith("assets/content/ui", StringComparison.OrdinalIgnoreCase) ? "UI Elements" : "Icons";
+
+                    var spriteObj = GenerateOrLoadSprite(spritePath, filename);
+                    AllUiSpritesList.Add(new UiSpriteMetadata
+                    {
+                        path = spritePath,
+                        name = filename,
+                        category = category,
+                        sprite = spriteObj,
+                        isBundleLoaded = false
+                    });
+                    if (spriteObj != null)
+                    {
+                        LoadedSpriteCache[spritePath] = spriteObj;
+                    }
                 }
             }
 
-            // 2. Discover Item Icons from Steam Rust installation
+            // 4. Discover Item Icons from Steam Rust installation
             var install = SteamDiscovery.DiscoverRustInstallation();
             if (install.IsValid && !string.IsNullOrEmpty(install.ItemsBundlePath))
             {
@@ -214,12 +242,12 @@ namespace RustCUIBuilder.Runtime.Discovery
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning("[RustCUIBuilder] Error scanning items bundle: " + ex.Message);
+                    Debug.LogWarning("[RustAssetDiscovery] Error scanning items bundle: " + ex.Message);
                 }
             }
 
             IsIndexed = true;
-            Debug.Log($"[RustCUIBuilder] Discovery complete: {AllItemsList.Count} items indexed, {AllUiSpritesList.Count} UI sprites ready.");
+            Debug.Log($"[RustAssetDiscovery] Discovery complete: {AllItemsList.Count} items indexed, {AllUiSpritesList.Count} UI sprites ready.");
         }
 
         public static ItemAssetMetadata FindItemByName(string name)
@@ -243,6 +271,12 @@ namespace RustCUIBuilder.Runtime.Discovery
             if (LoadedSpriteCache.TryGetValue(path, out var cached) && cached != null)
                 return cached;
 
+            if (RustBundleLoader.Sprites.TryGetValue(path, out var bundleSprite) && bundleSprite != null)
+            {
+                LoadedSpriteCache[path] = bundleSprite;
+                return bundleSprite;
+            }
+
             // Check if it's an item icon shortname
             var item = FindItemByName(path);
             if (item != null)
@@ -255,7 +289,7 @@ namespace RustCUIBuilder.Runtime.Discovery
                 }
             }
 
-            // Check if it's a verified UI sprite
+            // Fallback procedural sprite
             var sprite = GenerateOrLoadSprite(path, Path.GetFileNameWithoutExtension(path));
             if (sprite != null)
             {
@@ -285,7 +319,7 @@ namespace RustCUIBuilder.Runtime.Discovery
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[RustCUIBuilder] Failed to load icon {item.shortname}: {ex.Message}");
+                Debug.LogWarning($"[RustAssetDiscovery] Failed to load icon {item.shortname}: {ex.Message}");
             }
 
             return null;
@@ -373,7 +407,6 @@ namespace RustCUIBuilder.Runtime.Discovery
             }
             else
             {
-                // Crisp White square default
                 for (int i = 0; i < colors.Length; i++) colors[i] = Color.white;
             }
 

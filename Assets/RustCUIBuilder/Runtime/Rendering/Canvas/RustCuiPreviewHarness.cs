@@ -14,8 +14,7 @@ namespace RustCUIBuilder.Runtime.Rendering.Canvas
     {
         [TextArea(5, 15)]
         [SerializeField] private string _cuiJson = "";
-
-        [SerializeField] private int _selectedResolutionPresetIndex = 3; // 1920x1080 default
+        [SerializeField] public int SelectedResolutionPresetIndex = 3; // 1920x1080 default
 
         private RustViewportRenderer _renderer;
         private CuiDocument _currentDocument;

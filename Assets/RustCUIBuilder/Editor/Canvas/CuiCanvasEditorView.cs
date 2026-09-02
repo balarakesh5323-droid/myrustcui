@@ -9,10 +9,17 @@ using UnityEngine;
 
 namespace RustCUIBuilder.Editor.Canvas
 {
+    public enum CanvasBackgroundMode
+    {
+        DarkGrid,
+        RustInGame1,
+        RustInGame2
+    }
+
     /// <summary>
     /// Professional interactive visual 2D canvas editor for Rust CUI Builder.
     /// Supports pan, zoom, grid, snapping, pixel rulers, coordinate tooltips,
-    /// and visual bounding-box / anchor handle manipulation.
+    /// in-game background preview, and visual bounding-box / anchor handle manipulation.
     /// </summary>
     public class CuiCanvasEditorView
     {
@@ -26,6 +33,7 @@ namespace RustCUIBuilder.Editor.Canvas
         public bool ShowRulers { get; set; } = true;
         public bool ShowAnchors { get; set; } = true;
         public bool ShowGuides { get; set; } = true;
+        public CanvasBackgroundMode BackgroundMode { get; set; } = CanvasBackgroundMode.DarkGrid;
 
         public RustResolutionPreset CurrentPreset { get; set; } = RustResolutionPreset.Presets[3]; // 1920x1080 default
 
@@ -59,11 +67,14 @@ namespace RustCUIBuilder.Editor.Canvas
             float screenH = CurrentPreset.Height * _zoom;
             var screenRect = new Rect(viewRect.x + _panOffset.x, viewRect.y + _panOffset.y, screenW, screenH);
 
-            // Draw Grid inside screen bounds
-            DrawGrid(screenRect);
-
-            // Draw Rust Game Screen Frame
+            // Draw Rust Game Screen Frame & In-game Background
             DrawScreenFrame(screenRect);
+
+            // Draw Grid inside screen bounds
+            if (BackgroundMode == CanvasBackgroundMode.DarkGrid)
+            {
+                DrawGrid(screenRect);
+            }
 
             // Draw Elements from Document
             if (doc != null && doc.Elements != null)
@@ -155,8 +166,22 @@ namespace RustCUIBuilder.Editor.Canvas
 
         private void DrawScreenFrame(Rect screenRect)
         {
-            // Dark Rust viewport background
-            EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.95f));
+            if (BackgroundMode == CanvasBackgroundMode.RustInGame1)
+            {
+                var bg = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/RustCUIBuilder/Resources/Backgrounds/RustBackground1.jpg");
+                if (bg != null) GUI.DrawTexture(screenRect, bg, ScaleMode.ScaleAndCrop);
+                else EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.95f));
+            }
+            else if (BackgroundMode == CanvasBackgroundMode.RustInGame2)
+            {
+                var bg = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/RustCUIBuilder/Resources/Backgrounds/RustBackground2.jpg");
+                if (bg != null) GUI.DrawTexture(screenRect, bg, ScaleMode.ScaleAndCrop);
+                else EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.95f));
+            }
+            else
+            {
+                EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.95f));
+            }
 
             // Outer border
             Handles.BeginGUI();
@@ -173,7 +198,7 @@ namespace RustCUIBuilder.Editor.Canvas
             // Screen resolution label
             var labelStyle = new GUIStyle(EditorStyles.miniLabel)
             {
-                normal = { textColor = new Color(0.7f, 0.7f, 0.7f, 0.8f) }
+                normal = { textColor = new Color(0.9f, 0.9f, 0.9f, 0.9f) }
             };
             GUI.Label(new Rect(screenRect.x + 8, screenRect.y + 6, 300, 20), $"{CurrentPreset.Name} ({CurrentPreset.Width}x{CurrentPreset.Height})", labelStyle);
         }
@@ -212,7 +237,7 @@ namespace RustCUIBuilder.Editor.Canvas
                 }
             }
 
-            // Note: Rust Y anchor 0.0 is BOTTOM, Unity GUI Y 0 is TOP
+            // Rust Y anchor 0.0 is BOTTOM, Unity GUI Y 0 is TOP
             float xMin = parentRect.x + parentRect.width * anchorMin.x + offsetMin.x * _zoom;
             float yMin = parentRect.yMax - (parentRect.height * anchorMax.y + offsetMax.y * _zoom);
             float xMax = parentRect.x + parentRect.width * anchorMax.x + offsetMax.x * _zoom;
@@ -313,7 +338,6 @@ namespace RustCUIBuilder.Editor.Canvas
                     delta.y = Mathf.Round(delta.y / GridSize) * GridSize;
                 }
 
-                // In Rust, delta Y is inverted (GUI down is offset minus)
                 var newOffsetMin = new Vector2(_dragStartOffsetMin.x + delta.x, _dragStartOffsetMin.y - delta.y);
                 var newOffsetMax = new Vector2(_dragStartOffsetMax.x + delta.x, _dragStartOffsetMax.y - delta.y);
 
@@ -347,7 +371,6 @@ namespace RustCUIBuilder.Editor.Canvas
             EditorGUI.DrawRect(leftRulerRect, new Color(0.18f, 0.19f, 0.22f, 0.95f));
             EditorGUI.DrawRect(cornerRect, new Color(0.15f, 0.16f, 0.18f, 1f));
 
-            // Ruler markings
             var rulerStyle = new GUIStyle(EditorStyles.miniLabel)
             {
                 fontSize = 8,
@@ -384,23 +407,26 @@ namespace RustCUIBuilder.Editor.Canvas
 
         private void DrawCanvasToolbar(Rect viewRect)
         {
-            var barRect = new Rect(viewRect.xMax - 320, viewRect.yMax - 32, 310, 26);
+            var barRect = new Rect(viewRect.xMax - 440, viewRect.yMax - 32, 430, 26);
             EditorGUI.DrawRect(barRect, new Color(0.15f, 0.16f, 0.18f, 0.9f));
 
             GUILayout.BeginArea(barRect);
             EditorGUILayout.BeginHorizontal();
 
             GUILayout.Label($"Zoom: {Mathf.RoundToInt(_zoom * 100)}%", EditorStyles.miniLabel, GUILayout.Width(65));
-            _zoom = GUILayout.HorizontalSlider(_zoom, 0.2f, 2.0f, GUILayout.Width(80));
+            _zoom = GUILayout.HorizontalSlider(_zoom, 0.2f, 2.0f, GUILayout.Width(70));
 
-            if (GUILayout.Button("Fit", EditorStyles.miniButton, GUILayout.Width(32)))
+            if (GUILayout.Button("Fit", EditorStyles.miniButton, GUILayout.Width(28)))
             {
                 _zoom = 0.55f;
                 _panOffset = new Vector2(40, 40);
             }
 
-            SnapToGrid = GUILayout.Toggle(SnapToGrid, "Snap", EditorStyles.miniButton, GUILayout.Width(45));
-            ShowRulers = GUILayout.Toggle(ShowRulers, "Rulers", EditorStyles.miniButton, GUILayout.Width(50));
+            SnapToGrid = GUILayout.Toggle(SnapToGrid, "Snap", EditorStyles.miniButton, GUILayout.Width(42));
+            ShowRulers = GUILayout.Toggle(ShowRulers, "Rulers", EditorStyles.miniButton, GUILayout.Width(46));
+
+            // Background Mode
+            BackgroundMode = (CanvasBackgroundMode)EditorGUILayout.EnumPopup(BackgroundMode, EditorStyles.miniButton, GUILayout.Width(95));
 
             EditorGUILayout.EndHorizontal();
             GUILayout.EndArea();

@@ -16,7 +16,8 @@ namespace RustCUIBuilder.Editor.CodeSync
         public enum CodeViewTab
         {
             CSharpCode,
-            CuiJson
+            CuiJson,
+            ExportSettings
         }
 
         private CodeViewTab _currentTab = CodeViewTab.CSharpCode;
@@ -58,6 +59,11 @@ namespace RustCUIBuilder.Editor.CodeSync
                 _currentTab = CodeViewTab.CuiJson;
                 _isImportMode = false;
             }
+            if (GUILayout.Toggle(_currentTab == CodeViewTab.ExportSettings && !_isImportMode, "Options", EditorStyles.toolbarButton))
+            {
+                _currentTab = CodeViewTab.ExportSettings;
+                _isImportMode = false;
+            }
             if (GUILayout.Toggle(_isImportMode, "Import CUI", EditorStyles.toolbarButton))
             {
                 _isImportMode = true;
@@ -65,7 +71,7 @@ namespace RustCUIBuilder.Editor.CodeSync
 
             GUILayout.FlexibleSpace();
 
-            if (!_isImportMode)
+            if (!_isImportMode && _currentTab != CodeViewTab.ExportSettings)
             {
                 if (GUILayout.Button("Copy", EditorStyles.toolbarButton, GUILayout.Width(50)))
                 {
@@ -87,6 +93,10 @@ namespace RustCUIBuilder.Editor.CodeSync
             {
                 DrawImportView(doc, onModified);
             }
+            else if (_currentTab == CodeViewTab.ExportSettings)
+            {
+                DrawExportSettingsView(doc);
+            }
             else
             {
                 string textToDisplay = _currentTab == CodeViewTab.CSharpCode ? _generatedCode : _generatedJson;
@@ -102,6 +112,38 @@ namespace RustCUIBuilder.Editor.CodeSync
             EditorGUILayout.EndScrollView();
             EditorGUILayout.EndVertical();
             GUILayout.EndArea();
+        }
+
+        private void DrawExportSettingsView(CuiDocument doc)
+        {
+            EditorGUILayout.LabelField("Code Generator & Export Settings", EditorStyles.boldLabel);
+
+            EditorGUI.BeginChangeCheck();
+
+            _codeOptions.MethodName = EditorGUILayout.TextField("Method Name", _codeOptions.MethodName);
+            _codeOptions.AccessModifier = EditorGUILayout.TextField("Access Modifier", _codeOptions.AccessModifier);
+            _codeOptions.PlayerParamType = EditorGUILayout.TextField("Player Param Type", _codeOptions.PlayerParamType);
+            _codeOptions.PlayerVariableName = EditorGUILayout.TextField("Player Var Name", _codeOptions.PlayerVariableName);
+            _codeOptions.CustomArguments = EditorGUILayout.TextField("Extra Arguments", _codeOptions.CustomArguments);
+            _codeOptions.ChatCommandName = EditorGUILayout.TextField("Chat Command Hook", _codeOptions.ChatCommandName);
+
+            EditorGUILayout.Space(6);
+            _codeOptions.IncludeMethodWrapper = EditorGUILayout.Toggle("Wrap in Method", _codeOptions.IncludeMethodWrapper);
+            _codeOptions.IncludeCommandHook = EditorGUILayout.Toggle("Include [ChatCommand]", _codeOptions.IncludeCommandHook);
+            _codeOptions.IncludeUnloadHook = EditorGUILayout.Toggle("Include Unload() Cleanup", _codeOptions.IncludeUnloadHook);
+            _codeOptions.UseHighLevelPresets = EditorGUILayout.Toggle("Use CuiPanel / CuiButton", _codeOptions.UseHighLevelPresets);
+
+            EditorGUILayout.Space(6);
+            EditorGUILayout.LabelField("Pre-Code Injection (run before building UI):");
+            _codeOptions.PreCode = EditorGUILayout.TextArea(_codeOptions.PreCode, GUILayout.Height(50));
+
+            EditorGUILayout.LabelField("Post-Code Injection (run after AddUi):");
+            _codeOptions.PostCode = EditorGUILayout.TextArea(_codeOptions.PostCode, GUILayout.Height(50));
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                UpdateCode(doc);
+            }
         }
 
         private void DrawImportView(CuiDocument doc, Action onModified)

@@ -23,8 +23,8 @@ namespace RustCUIBuilder.Editor.Canvas
     /// </summary>
     public class CuiCanvasEditorView
     {
-        private Vector2 _panOffset = new Vector2(100f, 100f);
-        private float _zoom = 0.65f;
+        private Vector2 _panOffset = new Vector2(80f, 60f);
+        private float _zoom = 0.55f;
         private bool _isPanning;
         private Vector2 _lastMousePos;
 
@@ -57,8 +57,8 @@ namespace RustCUIBuilder.Editor.Canvas
 
         public void Draw(Rect viewRect, CuiDocument doc, Action onModified)
         {
-            // Background & Grid
-            EditorGUI.DrawRect(viewRect, new Color(0.12f, 0.13f, 0.15f, 1f));
+            // Dark viewport background
+            EditorGUI.DrawRect(viewRect, new Color(0.11f, 0.12f, 0.14f, 1f));
 
             HandleInput(viewRect, doc, onModified);
 
@@ -76,7 +76,7 @@ namespace RustCUIBuilder.Editor.Canvas
                 DrawGrid(screenRect);
             }
 
-            // Draw Elements from Document
+            // Draw Elements from Document (sorted root first)
             if (doc != null && doc.Elements != null)
             {
                 foreach (var elem in doc.Elements)
@@ -122,7 +122,7 @@ namespace RustCUIBuilder.Editor.Canvas
             // Zoom: Scroll wheel
             if (e.type == EventType.ScrollWheel)
             {
-                float zoomDelta = -e.delta.y * 0.05f;
+                float zoomDelta = -e.delta.y * 0.04f;
                 float oldZoom = _zoom;
                 _zoom = Mathf.Clamp(_zoom + zoomDelta, 0.15f, 3.0f);
 
@@ -133,7 +133,7 @@ namespace RustCUIBuilder.Editor.Canvas
                 e.Use();
             }
 
-            // Drag handling
+            // Drag handling release
             if (e.type == EventType.MouseUp && _draggingElementId != null)
             {
                 _draggingElementId = null;
@@ -146,7 +146,7 @@ namespace RustCUIBuilder.Editor.Canvas
         private void DrawGrid(Rect screenRect)
         {
             Handles.BeginGUI();
-            Color gridColor = new Color(0.2f, 0.22f, 0.25f, 0.4f);
+            Color gridColor = new Color(0.22f, 0.24f, 0.28f, 0.35f);
             float step = GridSize * _zoom;
             if (step < 6f) step *= 4f;
 
@@ -180,12 +180,12 @@ namespace RustCUIBuilder.Editor.Canvas
             }
             else
             {
-                EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.95f));
+                EditorGUI.DrawRect(screenRect, new Color(0.06f, 0.07f, 0.09f, 0.98f));
             }
 
-            // Outer border
+            // Outer border with Rust orange accent
             Handles.BeginGUI();
-            Handles.color = new Color(0.85f, 0.45f, 0.15f, 0.8f); // Rust orange accent
+            Handles.color = new Color(0.85f, 0.35f, 0.15f, 0.9f);
             Handles.DrawPolyLine(
                 new Vector3(screenRect.xMin, screenRect.yMin, 0),
                 new Vector3(screenRect.xMax, screenRect.yMin, 0),
@@ -195,55 +195,46 @@ namespace RustCUIBuilder.Editor.Canvas
             );
             Handles.EndGUI();
 
-            // Screen resolution label
+            // Resolution badge
             var labelStyle = new GUIStyle(EditorStyles.miniLabel)
             {
-                normal = { textColor = new Color(0.9f, 0.9f, 0.9f, 0.9f) }
+                fontSize = 9,
+                normal = { textColor = new Color(0.85f, 0.85f, 0.9f, 0.8f) }
             };
-            GUI.Label(new Rect(screenRect.x + 8, screenRect.y + 6, 300, 20), $"{CurrentPreset.Name} ({CurrentPreset.Width}x{CurrentPreset.Height})", labelStyle);
+            GUI.Label(new Rect(screenRect.x + 8, screenRect.y + 6, 320, 18), $"{CurrentPreset.Name} ({CurrentPreset.Width}x{CurrentPreset.Height})", labelStyle);
         }
 
-        private void DrawElement(Rect screenRect, CuiElementNode elem, CuiDocument doc, Action onModified)
+        public static Rect ComputeElementRect(CuiElementNode elem, CuiDocument doc, Rect screenRect, float zoom)
         {
-            var rect = elem.GetComponent<CuiRectTransformComponent>();
-            if (rect == null) return;
+            if (elem == null) return screenRect;
 
-            Vector2 anchorMin = RustCanvasScaler.ParseVector2(rect.AnchorMin, Vector2.zero);
-            Vector2 anchorMax = RustCanvasScaler.ParseVector2(rect.AnchorMax, Vector2.one);
-            Vector2 offsetMin = RustCanvasScaler.ParseVector2(rect.OffsetMin, Vector2.zero);
-            Vector2 offsetMax = RustCanvasScaler.ParseVector2(rect.OffsetMax, Vector2.zero);
-
-            // Compute parent rectangle
             Rect parentRect = screenRect;
             if (!string.IsNullOrEmpty(elem.Parent) && Array.IndexOf(RustAssetDiscovery.VerifiedLayers, elem.Parent) < 0)
             {
                 var parentElem = doc.FindByName(elem.Parent);
-                if (parentElem != null)
+                if (parentElem != null && parentElem != elem)
                 {
-                    var pRect = parentElem.GetComponent<CuiRectTransformComponent>();
-                    if (pRect != null)
-                    {
-                        Vector2 pAnchorMin = RustCanvasScaler.ParseVector2(pRect.AnchorMin, Vector2.zero);
-                        Vector2 pAnchorMax = RustCanvasScaler.ParseVector2(pRect.AnchorMax, Vector2.one);
-                        Vector2 pOffsetMin = RustCanvasScaler.ParseVector2(pRect.OffsetMin, Vector2.zero);
-                        Vector2 pOffsetMax = RustCanvasScaler.ParseVector2(pRect.OffsetMax, Vector2.zero);
-
-                        float pxMin = screenRect.x + screenRect.width * pAnchorMin.x + pOffsetMin.x * _zoom;
-                        float pyMin = screenRect.yMax - (screenRect.height * pAnchorMax.y + pOffsetMax.y * _zoom);
-                        float pxMax = screenRect.x + screenRect.width * pAnchorMax.x + pOffsetMax.x * _zoom;
-                        float pyMax = screenRect.yMax - (screenRect.height * pAnchorMin.y + pOffsetMin.y * _zoom);
-                        parentRect = Rect.MinMaxRect(pxMin, pyMin, pxMax, pyMax);
-                    }
+                    parentRect = ComputeElementRect(parentElem, doc, screenRect, zoom);
                 }
             }
 
-            // Rust Y anchor 0.0 is BOTTOM, Unity GUI Y 0 is TOP
-            float xMin = parentRect.x + parentRect.width * anchorMin.x + offsetMin.x * _zoom;
-            float yMin = parentRect.yMax - (parentRect.height * anchorMax.y + offsetMax.y * _zoom);
-            float xMax = parentRect.x + parentRect.width * anchorMax.x + offsetMax.x * _zoom;
-            float yMax = parentRect.yMax - (parentRect.height * anchorMin.y + offsetMin.y * _zoom);
+            var rectComp = elem.GetComponent<CuiRectTransformComponent>() ?? new CuiRectTransformComponent();
+            Vector2 anchorMin = RustCanvasScaler.ParseVector2(rectComp.AnchorMin, Vector2.zero);
+            Vector2 anchorMax = RustCanvasScaler.ParseVector2(rectComp.AnchorMax, Vector2.one);
+            Vector2 offsetMin = RustCanvasScaler.ParseVector2(rectComp.OffsetMin, Vector2.zero);
+            Vector2 offsetMax = RustCanvasScaler.ParseVector2(rectComp.OffsetMax, Vector2.zero);
 
-            var elemScreenRect = Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+            float xMin = parentRect.x + parentRect.width * anchorMin.x + offsetMin.x * zoom;
+            float xMax = parentRect.x + parentRect.width * anchorMax.x + offsetMax.x * zoom;
+            float yMin = parentRect.y + parentRect.height * (1f - anchorMax.y) - offsetMax.y * zoom;
+            float yMax = parentRect.y + parentRect.height * (1f - anchorMin.y) - offsetMin.y * zoom;
+
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+        }
+
+        private void DrawElement(Rect screenRect, CuiElementNode elem, CuiDocument doc, Action onModified)
+        {
+            var elemScreenRect = ComputeElementRect(elem, doc, screenRect, _zoom);
 
             // Element Graphics
             var img = elem.GetComponent<CuiImageComponent>();
@@ -307,13 +298,14 @@ namespace RustCUIBuilder.Editor.Canvas
             // Selection Outline and Gizmos
             if (elem.IsSelected)
             {
-                DrawSelectedGizmo(elemScreenRect, elem, rect, onModified);
+                var rectComp = elem.GetComponent<CuiRectTransformComponent>() ?? new CuiRectTransformComponent();
+                DrawSelectedGizmo(elemScreenRect, elem, rectComp, onModified);
             }
             else
             {
-                // Unselected subtle border
+                // Subtle boundary
                 Handles.BeginGUI();
-                Handles.color = new Color(0.4f, 0.5f, 0.6f, 0.3f);
+                Handles.color = new Color(0.35f, 0.45f, 0.55f, 0.25f);
                 Handles.DrawPolyLine(
                     new Vector3(elemScreenRect.xMin, elemScreenRect.yMin, 0),
                     new Vector3(elemScreenRect.xMax, elemScreenRect.yMin, 0),
@@ -332,8 +324,13 @@ namespace RustCUIBuilder.Editor.Canvas
                 _draggingElementId = elem.Id;
                 _currentDragHandle = DragHandleType.Body;
                 _dragStartMousePos = e.mousePosition;
-                _dragStartOffsetMin = offsetMin;
-                _dragStartOffsetMax = offsetMax;
+
+                var rectComp = elem.GetComponent<CuiRectTransformComponent>();
+                if (rectComp != null)
+                {
+                    _dragStartOffsetMin = RustCanvasScaler.ParseVector2(rectComp.OffsetMin, Vector2.zero);
+                    _dragStartOffsetMax = RustCanvasScaler.ParseVector2(rectComp.OffsetMax, Vector2.zero);
+                }
                 e.Use();
             }
         }
@@ -341,7 +338,7 @@ namespace RustCUIBuilder.Editor.Canvas
         private void DrawSelectedGizmo(Rect elemScreenRect, CuiElementNode elem, CuiRectTransformComponent rect, Action onModified)
         {
             Handles.BeginGUI();
-            Handles.color = new Color(0.2f, 0.7f, 1.0f, 0.95f); // Cyan selection
+            Handles.color = new Color(0.2f, 0.75f, 1.0f, 0.95f); // Cyan selection
 
             // Thick boundary
             Handles.DrawPolyLine(
@@ -382,16 +379,17 @@ namespace RustCUIBuilder.Editor.Canvas
                 e.Use();
             }
 
-            // Measurement Tooltip (W, H, X, Y)
+            // Measurement Tooltip
             float realW = elemScreenRect.width / _zoom;
             float realH = elemScreenRect.height / _zoom;
-            string dimText = $"W: {realW:0}  H: {realH:0}  (Name: {elem.Name})";
+            string dimText = $"<b>{elem.Name}</b> | W: {realW:0}px  H: {realH:0}px";
             var tipStyle = new GUIStyle(EditorStyles.helpBox)
             {
                 fontSize = 10,
+                richText = true,
                 normal = { textColor = Color.white }
             };
-            GUI.Label(new Rect(elemScreenRect.x, elemScreenRect.y - 24, 240, 20), dimText, tipStyle);
+            GUI.Label(new Rect(elemScreenRect.x, elemScreenRect.y - 22, 220, 20), dimText, tipStyle);
         }
 
         private void DrawRulers(Rect viewRect, Rect screenRect)
@@ -401,18 +399,18 @@ namespace RustCUIBuilder.Editor.Canvas
             var leftRulerRect = new Rect(viewRect.x, viewRect.y + rulerThickness, rulerThickness, viewRect.height - rulerThickness);
             var cornerRect = new Rect(viewRect.x, viewRect.y, rulerThickness, rulerThickness);
 
-            EditorGUI.DrawRect(topRulerRect, new Color(0.18f, 0.19f, 0.22f, 0.95f));
-            EditorGUI.DrawRect(leftRulerRect, new Color(0.18f, 0.19f, 0.22f, 0.95f));
-            EditorGUI.DrawRect(cornerRect, new Color(0.15f, 0.16f, 0.18f, 1f));
+            EditorGUI.DrawRect(topRulerRect, new Color(0.16f, 0.17f, 0.20f, 0.95f));
+            EditorGUI.DrawRect(leftRulerRect, new Color(0.16f, 0.17f, 0.20f, 0.95f));
+            EditorGUI.DrawRect(cornerRect, new Color(0.13f, 0.14f, 0.16f, 1f));
 
             var rulerStyle = new GUIStyle(EditorStyles.miniLabel)
             {
                 fontSize = 8,
-                normal = { textColor = new Color(0.6f, 0.6f, 0.6f, 0.7f) }
+                normal = { textColor = new Color(0.55f, 0.55f, 0.6f, 0.75f) }
             };
 
             Handles.BeginGUI();
-            Handles.color = new Color(0.35f, 0.36f, 0.4f, 0.8f);
+            Handles.color = new Color(0.3f, 0.32f, 0.36f, 0.7f);
 
             // Top Ruler Marks
             for (float px = 0; px <= CurrentPreset.Width; px += 100)
@@ -420,7 +418,7 @@ namespace RustCUIBuilder.Editor.Canvas
                 float x = screenRect.x + px * _zoom;
                 if (x >= topRulerRect.x && x <= topRulerRect.xMax)
                 {
-                    Handles.DrawLine(new Vector3(x, topRulerRect.yMax - 6, 0), new Vector3(x, topRulerRect.yMax, 0));
+                    Handles.DrawLine(new Vector3(x, topRulerRect.yMax - 5, 0), new Vector3(x, topRulerRect.yMax, 0));
                     GUI.Label(new Rect(x + 2, topRulerRect.y, 40, rulerThickness), $"{px:0}", rulerStyle);
                 }
             }
@@ -431,8 +429,8 @@ namespace RustCUIBuilder.Editor.Canvas
                 float y = screenRect.y + py * _zoom;
                 if (y >= leftRulerRect.y && y <= leftRulerRect.yMax)
                 {
-                    Handles.DrawLine(new Vector3(leftRulerRect.xMax - 6, y, 0), new Vector3(leftRulerRect.xMax, y, 0));
-                    GUI.Label(new Rect(leftRulerRect.x + 1, y - 10, rulerThickness, 14), $"{py:0}", rulerStyle);
+                    Handles.DrawLine(new Vector3(leftRulerRect.xMax - 5, y, 0), new Vector3(leftRulerRect.xMax, y, 0));
+                    GUI.Label(new Rect(leftRulerRect.x + 1, y - 9, rulerThickness, 14), $"{py:0}", rulerStyle);
                 }
             }
 
@@ -441,19 +439,19 @@ namespace RustCUIBuilder.Editor.Canvas
 
         private void DrawCanvasToolbar(Rect viewRect)
         {
-            var barRect = new Rect(viewRect.xMax - 440, viewRect.yMax - 32, 430, 26);
-            EditorGUI.DrawRect(barRect, new Color(0.15f, 0.16f, 0.18f, 0.9f));
+            var barRect = new Rect(viewRect.xMax - 430, viewRect.yMax - 30, 420, 24);
+            EditorGUI.DrawRect(barRect, new Color(0.13f, 0.14f, 0.16f, 0.92f));
 
             GUILayout.BeginArea(barRect);
             EditorGUILayout.BeginHorizontal();
 
-            GUILayout.Label($"Zoom: {Mathf.RoundToInt(_zoom * 100)}%", EditorStyles.miniLabel, GUILayout.Width(65));
-            _zoom = GUILayout.HorizontalSlider(_zoom, 0.2f, 2.0f, GUILayout.Width(70));
+            GUILayout.Label($"Zoom: {Mathf.RoundToInt(_zoom * 100)}%", EditorStyles.miniLabel, GUILayout.Width(62));
+            _zoom = GUILayout.HorizontalSlider(_zoom, 0.2f, 2.0f, GUILayout.Width(65));
 
             if (GUILayout.Button("Fit", EditorStyles.miniButton, GUILayout.Width(28)))
             {
                 _zoom = 0.55f;
-                _panOffset = new Vector2(40, 40);
+                _panOffset = new Vector2(60, 40);
             }
 
             SnapToGrid = GUILayout.Toggle(SnapToGrid, "Snap", EditorStyles.miniButton, GUILayout.Width(42));

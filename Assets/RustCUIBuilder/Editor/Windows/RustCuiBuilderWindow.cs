@@ -41,6 +41,12 @@ namespace RustCUIBuilder.Editor.Windows
         private CuiSnapshotManager _snapshotManager;
         private CuiDifferenceOverlayView _diffOverlayView;
 
+        private enum LeftSidebarTab
+        {
+            Hierarchy,
+            Toolbox
+        }
+
         private enum RightBottomTab
         {
             CodeSync,
@@ -49,6 +55,7 @@ namespace RustCUIBuilder.Editor.Windows
             Validation
         }
 
+        private LeftSidebarTab _leftSidebarTab = LeftSidebarTab.Hierarchy;
         private RightBottomTab _rightBottomTab = RightBottomTab.CodeSync;
         private CuiValidationReport _lastValidationReport;
         private string _currentFilePath = "";
@@ -57,7 +64,7 @@ namespace RustCUIBuilder.Editor.Windows
         public static void ShowWindow()
         {
             var window = GetWindow<RustCuiBuilderWindow>("Rust CUI Builder");
-            window.minSize = new Vector2(1050, 680);
+            window.minSize = new Vector2(1100, 680);
             window.Show();
         }
 
@@ -142,7 +149,7 @@ namespace RustCUIBuilder.Editor.Windows
             titleText.Components.Add(new CuiTextComponent
             {
                 Text = "RUST SERVER STORE",
-                FontSize = 20,
+                FontSize = 18,
                 Font = "RobotoCondensed-Bold.ttf",
                 Align = TextAnchor.MiddleLeft,
                 Color = "1 1 1 1"
@@ -274,15 +281,9 @@ namespace RustCUIBuilder.Editor.Windows
             float rightPanelWidth = 340f;
             float centerWidth = totalWidth - leftPanelWidth - rightPanelWidth;
 
-            // 1. Left Column (Toolbox Top + Hierarchy Bottom)
-            float toolboxHeight = 240f;
-            float hierarchyHeight = totalHeight - toolboxHeight;
-
-            var toolboxRect = new Rect(0, 20, leftPanelWidth, toolboxHeight);
-            var hierarchyRect = new Rect(0, 20 + toolboxHeight, leftPanelWidth, hierarchyHeight);
-
-            _toolboxView.Draw(toolboxRect, _document, () => { RecordSnapshot("Add Template/Element"); OnDocumentModified(); });
-            _hierarchyView.Draw(hierarchyRect, _document, () => { RecordSnapshot("Hierarchy Edit"); OnDocumentModified(); });
+            // 1. Left Column (Tabbed Hierarchy & Toolbox)
+            var leftColumnRect = new Rect(0, 20, leftPanelWidth, totalHeight);
+            DrawLeftSidebar(leftColumnRect);
 
             // 2. Center Column (Canvas Visual Editor)
             var canvasRect = new Rect(leftPanelWidth, 20, centerWidth, totalHeight);
@@ -303,6 +304,34 @@ namespace RustCUIBuilder.Editor.Windows
             _inspectorView.Draw(inspectorRect, _document, () => { RecordSnapshot("Property Edit"); OnDocumentModified(); });
 
             DrawRightBottomTabs(rightBottomRect);
+        }
+
+        private void DrawLeftSidebar(Rect rect)
+        {
+            GUILayout.BeginArea(rect);
+            EditorGUILayout.BeginVertical("box");
+
+            // Segmented Tab Switcher
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            if (GUILayout.Toggle(_leftSidebarTab == LeftSidebarTab.Hierarchy, "Hierarchy", EditorStyles.toolbarButton))
+                _leftSidebarTab = LeftSidebarTab.Hierarchy;
+            if (GUILayout.Toggle(_leftSidebarTab == LeftSidebarTab.Toolbox, "Toolbox / Primitives", EditorStyles.toolbarButton))
+                _leftSidebarTab = LeftSidebarTab.Toolbox;
+            EditorGUILayout.EndHorizontal();
+
+            var innerRect = new Rect(0, 22, rect.width, rect.height - 24);
+
+            if (_leftSidebarTab == LeftSidebarTab.Hierarchy)
+            {
+                _hierarchyView.Draw(innerRect, _document, () => { RecordSnapshot("Hierarchy Edit"); OnDocumentModified(); });
+            }
+            else
+            {
+                _toolboxView.Draw(innerRect, _document, () => { RecordSnapshot("Add Primitive/Template"); OnDocumentModified(); });
+            }
+
+            EditorGUILayout.EndVertical();
+            GUILayout.EndArea();
         }
 
         private void DrawRightBottomTabs(Rect rect)

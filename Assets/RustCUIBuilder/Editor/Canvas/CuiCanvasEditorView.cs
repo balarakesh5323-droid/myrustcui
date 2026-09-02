@@ -374,7 +374,11 @@ namespace RustCUIBuilder.Editor.Canvas
             else if (btn != null)
             {
                 fillColor = CuiColorExtensions.ToUnityColor(btn.Color, new Color(0.2f, 0.5f, 0.3f, 0.8f));
-                if (!string.IsNullOrEmpty(btn.Material))
+                if (!string.IsNullOrEmpty(btn.Sprite))
+                {
+                    elemSprite = RustAssetDiscovery.GetSpriteByPath(btn.Sprite);
+                }
+                else if (!string.IsNullOrEmpty(btn.Material))
                 {
                     elemSprite = RustAssetDiscovery.GetSpriteByPath(btn.Material);
                 }
@@ -402,15 +406,24 @@ namespace RustCUIBuilder.Editor.Canvas
                 EditorGUI.DrawRect(elemScreenRect, fillColor);
             }
 
-            // Element Text
+            // Element Text with Rich Text & Authentic Font Support
             if (text != null && !string.IsNullOrEmpty(text.Text))
             {
                 var textStyle = new GUIStyle(EditorStyles.label)
                 {
+                    richText = true,
+                    wordWrap = true,
                     fontSize = Mathf.Max(9, Mathf.RoundToInt(text.FontSize * _zoom)),
                     normal = { textColor = CuiColorExtensions.ToUnityColor(text.Color, Color.white) },
                     alignment = text.Align
                 };
+
+                if (!string.IsNullOrEmpty(text.Font))
+                {
+                    var customFont = RustBundleManager.LoadFont(text.Font);
+                    if (customFont != null) textStyle.font = customFont;
+                }
+
                 GUI.Label(elemScreenRect, text.Text, textStyle);
             }
 

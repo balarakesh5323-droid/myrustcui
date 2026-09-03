@@ -16,6 +16,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
         public string ToolName => "Pivot";
 
         private bool _isDraggingPivot;
+        public bool IsDragging => _isDraggingPivot;
+        public bool IsInteracting => _isDraggingPivot;
         private Vector2 _initialPivot;
 
         public void OnToolActivate() { _isDraggingPivot = false; }
@@ -33,7 +35,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             Action onModified,
             Action<string> onCommitUndo)
         {
-            if (doc == null || !viewportRect.Contains(currentEvent.mousePosition)) return false;
+            if (doc == null) return false;
+            if (!viewportRect.Contains(currentEvent.mousePosition) && !_isDraggingPivot) return false;
 
             var primary = doc.PrimarySelectedElement;
             if (primary == null || primary.IsLocked || primary.IsHidden) return false;

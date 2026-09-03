@@ -177,18 +177,13 @@ namespace RustCUIBuilder.Editor.Canvas
         {
             var e = Event.current;
 
-            // Allow drag/up events to reach active tools even when mouse exits viewport.
-            // Without this, releasing the mouse slightly outside the viewport drops the MouseUp
-            // and tools never commit their changes, causing a visual "snap back."
-            bool isActiveToolInteracting = false;
-            if (ToolController.ActiveTool is Tools.ResizeTool rt && rt.IsResizing) isActiveToolInteracting = true;
-            else if (ToolController.ActiveTool is Tools.MoveTool mt && mt.IsDragging) isActiveToolInteracting = true;
-            else if (ToolController.ActiveTool is Tools.RotateTool rot && rot.IsRotating) isActiveToolInteracting = true;
-            // Also check the resize tool directly since it can be active even when ActiveTool is Select/Move
-            if (!isActiveToolInteracting)
+            // Universal interaction check: allows drag/up events through to any active tool even when mouse exits viewport
+            bool isActiveToolInteracting = _isPanning || ToolController.IsAnyToolInteracting;
+
+            // When clicking inside canvas viewport, steal keyboard focus from any active inspector textfields
+            if (e.type == EventType.MouseDown && localViewportRect.Contains(e.mousePosition))
             {
-                var resizeTool = ToolController.GetTool<Tools.ResizeTool>(Tools.CanvasToolMode.Resize);
-                if (resizeTool != null && resizeTool.IsResizing) isActiveToolInteracting = true;
+                GUIUtility.keyboardControl = _canvasControlId;
             }
 
             if (!localViewportRect.Contains(e.mousePosition) && !isActiveToolInteracting) return;
@@ -221,6 +216,7 @@ namespace RustCUIBuilder.Editor.Canvas
                 _isPanning = true;
                 _lastMousePos = e.mousePosition;
                 GUIUtility.keyboardControl = _canvasControlId;
+                GUIUtility.hotControl = _canvasControlId;
                 e.Use();
                 return;
             }
@@ -232,9 +228,10 @@ namespace RustCUIBuilder.Editor.Canvas
                 e.Use();
                 return;
             }
-            if (e.type == EventType.MouseUp && _isPanning)
+            if ((e.rawType == EventType.MouseUp || e.type == EventType.MouseUp) && _isPanning)
             {
                 _isPanning = false;
+                if (GUIUtility.hotControl == _canvasControlId) GUIUtility.hotControl = 0;
                 e.Use();
                 return;
             }
@@ -259,6 +256,26 @@ namespace RustCUIBuilder.Editor.Canvas
 
             // Dispatch to Active Tool
             ToolController.ProcessEvent(e, localViewportRect, _panOffset, _zoom, canvasW, canvasH, doc, GuideSystem, onModified, onCommitUndo);
+
+            // Manage hotControl capture so mouse drag & mouse up events are guaranteed to reach the active tool
+            if (e.type == EventType.MouseDown && (ToolController.IsAnyToolInteracting || _isPanning))
+            {
+                GUIUtility.hotControl = _canvasControlId;
+            }
+            else if (e.rawType == EventType.MouseUp || e.type == EventType.MouseUp)
+            {
+                if (GUIUtility.hotControl == _canvasControlId)
+                {
+                    GUIUtility.hotControl = 0;
+                }
+            }
+            else if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape)
+            {
+                if (GUIUtility.hotControl == _canvasControlId)
+                {
+                    GUIUtility.hotControl = 0;
+                }
+            }
         }
 
         private void ShowCanvasContextMenu(

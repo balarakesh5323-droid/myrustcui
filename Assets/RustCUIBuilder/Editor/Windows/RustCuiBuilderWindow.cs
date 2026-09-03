@@ -56,6 +56,12 @@ namespace RustCUIBuilder.Editor.Windows
         private LeftSidebarTab _leftSidebarTab = LeftSidebarTab.Hierarchy;
         private RightBottomTab _rightBottomTab = RightBottomTab.AssetBrowser;
 
+        public CuiDocument Document => _document;
+        public CuiCanvasEditorView CanvasView => _canvasView;
+        public CuiCommandHistory CommandHistory => _history;
+        public CuiDocument LastSnapshotState => _lastSnapshotState;
+        public void ResetToNewDocument() => CreateNewDocument();
+
         [MenuItem("Rust/CUI Builder (Visual Designer) %#r", priority = 100)]
         public static void ShowWindow()
         {

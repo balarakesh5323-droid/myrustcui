@@ -17,6 +17,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
         public string ToolName => "Anchors";
 
         private bool _isDraggingAnchor;
+        public bool IsDragging => _isDraggingAnchor;
+        public bool IsInteracting => _isDraggingAnchor;
         private HandleHitType _activeAnchorPin = HandleHitType.None;
         private Vector2 _initialAnchorMin;
         private Vector2 _initialAnchorMax;
@@ -36,7 +38,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             Action onModified,
             Action<string> onCommitUndo)
         {
-            if (doc == null || !viewportRect.Contains(currentEvent.mousePosition)) return false;
+            if (doc == null) return false;
+            if (!viewportRect.Contains(currentEvent.mousePosition) && !_isDraggingAnchor) return false;
 
             var primary = doc.PrimarySelectedElement;
             if (primary == null || primary.IsLocked || primary.IsHidden) return false;

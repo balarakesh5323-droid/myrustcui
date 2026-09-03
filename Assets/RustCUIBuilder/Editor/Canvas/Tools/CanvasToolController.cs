@@ -38,6 +38,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             return _tools.TryGetValue(mode, out var tool) ? tool as T : null;
         }
 
+        public bool IsAnyToolInteracting => _tools.Values.Any(t => t.IsInteracting);
+
         public CanvasToolController()
         {
             RegisterTool(new SelectTool());
@@ -65,10 +67,13 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
             Action onModified,
             Action<string> onCommitUndo)
         {
-            // 1. If ResizeTool is actively dragging/resizing, keep routing directly to it
-            if (_tools.TryGetValue(CanvasToolMode.Resize, out var resizerTool) && resizerTool is ResizeTool resizer && resizer.IsResizing)
+            // 1. If any tool is actively dragging/interacting, keep routing directly to it
+            foreach (var tool in _tools.Values)
             {
-                return resizer.ProcessEvent(currentEvent, viewportRect, pan, zoom, canvasWidth, canvasHeight, doc, guideSystem, onModified, onCommitUndo);
+                if (tool.IsInteracting)
+                {
+                    return tool.ProcessEvent(currentEvent, viewportRect, pan, zoom, canvasWidth, canvasHeight, doc, guideSystem, onModified, onCommitUndo);
+                }
             }
 
             // 2. Handle Tool Hotkeys (Q, W, E, R, T, Y) when no modifiers are pressed
@@ -82,7 +87,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
                 if (currentEvent.keyCode == KeyCode.Y) { ActiveMode = CanvasToolMode.Pivot; currentEvent.Use(); return true; }
             }
 
-            // 3. Seamless Resize Handle Interception in Select and Move modes
+            // 3. Seamless Handle Interception & Move Delegation in Select and Move modes
             if (_activeMode == CanvasToolMode.Select || _activeMode == CanvasToolMode.Move)
             {
                 var selected = doc?.SelectedElements.Where(e => !e.IsLocked && !e.IsHidden).ToList();
@@ -98,6 +103,13 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
                         if (_tools.TryGetValue(CanvasToolMode.Resize, out var resizeInstance))
                         {
                             return resizeInstance.ProcessEvent(currentEvent, viewportRect, pan, zoom, canvasWidth, canvasHeight, doc, guideSystem, onModified, onCommitUndo);
+                        }
+                    }
+                    else if (_activeMode == CanvasToolMode.Select && hit.HitType == HandleHitType.Body)
+                    {
+                        if (_tools.TryGetValue(CanvasToolMode.Move, out var moveInstance))
+                        {
+                            return moveInstance.ProcessEvent(currentEvent, viewportRect, pan, zoom, canvasWidth, canvasHeight, doc, guideSystem, onModified, onCommitUndo);
                         }
                     }
                 }

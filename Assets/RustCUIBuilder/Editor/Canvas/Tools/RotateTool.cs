@@ -17,6 +17,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
 
         private bool _isRotating;
         public bool IsRotating => _isRotating;
+        public bool IsInteracting => _isRotating;
         private float _initialRotation;
         private float _initialAngle;
 

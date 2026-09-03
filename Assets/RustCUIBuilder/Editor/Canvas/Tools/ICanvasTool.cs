@@ -23,6 +23,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
     {
         CanvasToolMode ToolMode { get; }
         string ToolName { get; }
+        bool IsInteracting { get; }
 
         void OnToolActivate();
         void OnToolDeactivate();

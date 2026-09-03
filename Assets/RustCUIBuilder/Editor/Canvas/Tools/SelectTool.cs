@@ -17,6 +17,8 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
         public string ToolName => "Select / Marquee";
 
         private bool _isMarqueeDragging;
+        public bool IsDragging => _isMarqueeDragging;
+        public bool IsInteracting => _isMarqueeDragging;
         private Vector2 _marqueeStartScreen;
         private Vector2 _marqueeCurrentScreen;
 

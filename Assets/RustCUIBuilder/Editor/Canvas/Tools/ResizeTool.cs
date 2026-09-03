@@ -24,6 +24,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
         public string ToolName => "Resize";
 
         public bool IsResizing => _isResizing;
+        public bool IsInteracting => _isResizing;
 
         private bool _isResizing;
         private HandleHitType _activeHandle = HandleHitType.None;

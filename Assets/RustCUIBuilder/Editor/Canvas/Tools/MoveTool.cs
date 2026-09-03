@@ -19,6 +19,7 @@ namespace RustCUIBuilder.Editor.Canvas.Tools
 
         private bool _isDragging;
         public bool IsDragging => _isDragging;
+        public bool IsInteracting => _isDragging;
         private Vector2 _dragStartScreen;
         private Vector2 _dragStartCanvas;
         private Rect _primaryStartCanvasRect;

@@ -506,6 +506,16 @@ namespace RustCUIBuilder.Editor.Canvas
             var coords = RustCanvasCoordinates.Instance;
             var elemScreenRect = coords.GetElementScreenRect(elem, doc, localViewportRect, _panOffset, _zoom, canvasW, canvasH);
 
+            var rectComp = elem.GetComponent<CuiRectTransformComponent>();
+            float rotation = rectComp?.Rotation ?? 0f;
+            bool hasRotation = Mathf.Abs(rotation) > 0.001f;
+            Matrix4x4 prevMatrix = GUI.matrix;
+            if (hasRotation)
+            {
+                var pivotScreen = coords.GetPivotScreenPoint(elem, doc, localViewportRect, _panOffset, _zoom, canvasW, canvasH);
+                GUIUtility.RotateAroundPivot(-rotation, pivotScreen);
+            }
+
             var img = elem.GetComponent<CuiImageComponent>();
             var raw = elem.GetComponent<CuiRawImageComponent>();
             var text = elem.GetComponent<CuiTextComponent>();
@@ -600,6 +610,11 @@ namespace RustCUIBuilder.Editor.Canvas
                     new Vector3(elemScreenRect.xMin, elemScreenRect.yMin, 0)
                 );
                 Handles.EndGUI();
+            }
+
+            if (hasRotation)
+            {
+                GUI.matrix = prevMatrix;
             }
         }
 

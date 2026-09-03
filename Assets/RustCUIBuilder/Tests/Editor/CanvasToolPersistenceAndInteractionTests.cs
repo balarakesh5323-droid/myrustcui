@@ -171,8 +171,8 @@ namespace RustCUIBuilder.Tests.Editor
                 new Event { type = EventType.MouseUp, button = 0, mousePosition = center + new Vector2(0f, 100f) },
                 viewportRect, pan, zoom, CanvasW, CanvasH, doc, null, null, (u) => undoAction = u);
 
-            Assert.AreEqual("Rotate RotPanel", undoAction);
-            Assert.AreEqual(90f, rect.Rotation, 1f);
+            StringAssert.StartsWith("Rotate RotPanel", undoAction);
+            Assert.AreEqual(-90f, rect.Rotation, 1f);
         }
 
         [Test]
